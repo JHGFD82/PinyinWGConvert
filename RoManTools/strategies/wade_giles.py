@@ -5,7 +5,7 @@ This module contains the strategy for processing Wade-Giles syllables with
 systematic ambiguity resolution.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, List, Tuple
 from .base import RomanizationStrategy
 from ..constants import vowels, apostrophes
 
@@ -137,10 +137,27 @@ class WadeGilesStrategy(RomanizationStrategy):
         Returns:
             True if the syllable is valid, False otherwise.
         """
-        # Use the processor's validation method
+        # Use the processor's validation method with error tracking
         if initial == '':
-            return self.processor.validate_final_using_array('ø', final)
-        return self.processor.validate_final_using_array(initial, final)
+            return self.processor.validate_final_using_array('ø', final, error_tracker=syllable.error_tracker)
+        return self.processor.validate_final_using_array(initial, final, error_tracker=syllable.error_tracker)
+    
+    def get_illegal_characters(self) -> List[Tuple[str, str]]:
+        """
+        Get illegal characters specific to Wade-Giles romanization.
+        
+        Wade-Giles uses apostrophes in initials (e.g., ch', ts'), so they are not illegal.
+        
+        Returns:
+            List of tuples containing (character, reason) pairs.
+        """
+        # Get base illegal characters, but exclude apostrophes since they're used in Wade-Giles
+        illegal_chars = super().get_illegal_characters()
+        
+        # Wade-Giles allows apostrophes in initials, so we don't add them to illegal list
+        # (apostrophes are a valid part of Wade-Giles romanization)
+        
+        return illegal_chars
         
     def _find_wg_syllable_boundaries(self, text: str) -> str:
         """

@@ -4,9 +4,9 @@ Pinyin romanization strategy implementation.
 This module contains the strategy for processing Pinyin syllables.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, List, Tuple
 from .base import RomanizationStrategy
-from ..constants import vowels
+from ..constants import vowels, apostrophes
 
 if TYPE_CHECKING:
     from ..syllable import Syllable
@@ -87,7 +87,24 @@ class PinyinStrategy(RomanizationStrategy):
         Returns:
             True if the syllable is valid, False otherwise.
         """
-        # Use the processor's validation method
+        # Use the processor's validation method with error tracking
         if initial == '':
-            return self.processor.validate_final_using_array('ø', final)
-        return self.processor.validate_final_using_array(initial, final)
+            return self.processor.validate_final_using_array('ø', final, error_tracker=syllable.error_tracker)
+        return self.processor.validate_final_using_array(initial, final, error_tracker=syllable.error_tracker)
+    
+    def get_illegal_characters(self) -> List[Tuple[str, str]]:
+        """
+        Get illegal characters specific to Pinyin romanization.
+        
+        Pinyin does not use apostrophes within syllables (they are word separators).
+        
+        Returns:
+            List of tuples containing (character, reason) pairs.
+        """
+        illegal_chars = super().get_illegal_characters()
+        
+        # Add apostrophes as illegal in Pinyin (they are only word separators, not part of syllables)
+        for apos in apostrophes:
+            illegal_chars.append((apos, 'apostrophes not used in Pinyin syllables'))
+        
+        return illegal_chars
