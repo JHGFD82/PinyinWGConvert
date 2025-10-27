@@ -6,12 +6,15 @@ This module provides functions to load various data required for processing roma
 - Conversion mappings between different romanization methods.
 - Method parameters for specific romanization methods.
 - Stopwords list.
+- Rare syllable information.
 
 Functions:
     load_romanization_data(file_path: str) -> Tuple[List[str], List[str], Tuple[Tuple[bool, ...], ...]]:
         Load romanization data from a CSV file and return initials, finals, and a 2D array indicating valid combinations.
     load_conversion_data() -> List[Dict[str, str]]:
         Load the conversion mappings between different romanization methods.
+    load_rare_syllables() -> Dict[str, set[str]]:
+        Load rare syllable information from conversion mappings.
     load_method_params(method: str) -> Dict[str, Union[Tuple[Tuple[bool, ...], ...], List[str], str]]:
         Load romanization method parameters including initials, finals, and the valid combinations array.
     load_stopwords() -> List[str]:
@@ -65,6 +68,31 @@ def load_conversion_data() -> List[Dict[str, str]]:
         for row in reader:
             mappings.append(row)
     return mappings
+
+
+def load_rare_syllables() -> Dict[str, set[str]]:
+    """
+    Loads rare syllable information from the conversion mapping CSV.
+    
+    Returns:
+        Dict[str, set[str]]: A dictionary mapping romanization method codes to sets of rare syllables.
+                             For example: {'py': {'ong', 'pia', 'pun'}, 'wg': set()}
+    """
+    source_file = os.path.join(base_path, 'data', 'conversion_mapping.csv')
+    rare_syllables: Dict[str, set[str]] = {'py': set(), 'wg': set()}
+    
+    with open(source_file, encoding='utf-8') as file:
+        reader = csv.DictReader(file)
+        for row in reader:
+            # Check if the meta column indicates a rare syllable
+            if row.get('meta', '').strip().lower() == 'rare':
+                # Add to appropriate romanization method sets
+                if row.get('py'):
+                    rare_syllables['py'].add(row['py'].lower())
+                if row.get('wg'):
+                    rare_syllables['wg'].add(row['wg'].lower())
+    
+    return rare_syllables
 
 
 def load_method_params(method: str) -> Dict[str, Union[Tuple[Tuple[bool, ...], ...], List[str], str]]:
