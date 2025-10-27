@@ -57,7 +57,6 @@ Documentation on command-line execution can be found in [CLI.md](https://github.
 
 ## Possible Future Goals (suggestions welcome!)
 
-* **Feedback**: Provide meaningful and specific error messages for incorrect syntax (e.g., `missing or invalid final: chy`, `extraneous characters: "(2)"`, `Xui is not a valid Wade-Giles syllable.`).
 * **IPA Pronunciation**: Convert between romanized text and the International Phonetic Alphabet.
 * **Tone Marking Conversion**: Convert between tone marking systems (numerical and IPA).
 * **Audio Pronunciation**: Produce audio recordings of inputted text.
