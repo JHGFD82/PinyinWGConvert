@@ -20,7 +20,14 @@ class Config:
     error_skip which is essential for methods where non-romanized Mandarin characters are maintained in output.
     """
 
-    def __init__(self, crumbs: bool = False, error_skip: bool = False, error_report: bool = False):
+    def __init__(
+        self,
+        crumbs: bool = False,
+        error_skip: bool = False,
+        error_report: bool = False,
+        error_report_compact: bool = False,
+        error_report_max: int = 0
+    ):
         """
         Initializes instances of the Config class.
 
@@ -28,11 +35,15 @@ class Config:
             crumbs (bool): If True, includes intermediate outputs (crumbs) during processing.
             error_skip (bool): If True, skips error reporting on invalid characters.
             error_report (bool): If True, reports errors encountered during processing.
+            error_report_compact (bool): If True, generates compact one-line reports. If False, generates detailed error reports.
+            error_report_max (int): Maximum number of errors to include in reports. 0 means all errors. Only first N errors will be shown.
         """
 
         self.crumbs = crumbs
         self.error_skip = error_skip
         self.error_report = error_report
+        self.error_report_compact = error_report_compact
+        self.error_report_max = error_report_max if error_report_max > 0 else None
         self.logger = logging.getLogger(__name__)
         if not logging.getLogger().hasHandlers():  # pragma: no cover
             logging.basicConfig(level=logging.INFO, format='%(levelname)5s: %(message)s')  # pragma: no cover
