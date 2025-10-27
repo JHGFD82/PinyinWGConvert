@@ -118,7 +118,17 @@ def main(arg_list: Optional[List[str]] = None):
     parent_parser.add_argument('-S', '--error_skip', action='store_true',
                               help='Skip errors instead of aborting')
     parent_parser.add_argument('-R', '--error_report', action='store_true',
-                              help='Include error messages in the output')
+                              help='Enable error reporting. When enabled, validation errors will be included in the output')
+    
+    # Error reporting options (only meaningful when --error_report is used)
+    error_report_group = parent_parser.add_argument_group(
+        'error reporting options',
+        'These options configure error reporting behavior and require --error_report (-R) to be enabled'
+    )
+    error_report_group.add_argument('--error_compact', action='store_true',
+                              help='Use compact one-line error format (suitable for tables). Requires --error_report')
+    error_report_group.add_argument('--error_max', type=int, default=0,
+                              help='Maximum number of errors to report (0 = all errors). Requires --error_report')
     
     # SEGMENT subcommand
     segment_parser = subparsers.add_parser('segment', help='Segment text into syllables', parents=[parent_parser])
@@ -178,8 +188,18 @@ def main(arg_list: Optional[List[str]] = None):
         parser.print_help()
         return
     
+    # Validate that error_compact and error_max are only used with error_report
+    if (args.error_compact or args.error_max != 0) and not args.error_report:
+        parser.error("--error_compact and --error_max require --error_report (-R) to be enabled")
+    
     # Create the Config object (only when we have an action)
-    config = Config(crumbs=args.crumbs, error_skip=args.error_skip, error_report=args.error_report)
+    config = Config(
+        crumbs=args.crumbs,
+        error_skip=args.error_skip,
+        error_report=args.error_report,
+        error_report_verbose=not args.error_compact,
+        error_report_max=args.error_max
+    )
     
     # Print starting timestamp if crumbs is enabled
     from datetime import datetime
