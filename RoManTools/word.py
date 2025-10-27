@@ -299,14 +299,14 @@ class Word:
         # Report errors if error_report is enabled
         if self.processor.config.error_report and self.error_tracker.has_errors():
             error_report = self.error_tracker.generate_report(
-                verbose=self.processor.config.error_report_verbose,
+                compact=self.processor.config.error_report_compact,
                 max_errors=self.processor.config.error_report_max,
                 include_summary=False,
                 include_details=True
             )
             
-            # For verbose reports, include word context
-            if self.processor.config.error_report_verbose:
+            # For detailed reports, include word context
+            if not self.processor.config.error_report_compact:
                 message = f"'{self.preview_word}':\n{error_report}"
             else:
                 # For compact reports, just show the error

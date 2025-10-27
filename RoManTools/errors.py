@@ -326,7 +326,7 @@ class ErrorTracker:
     
     def generate_report(
         self,
-        verbose: bool = True,
+        compact: bool = False,
         max_errors: Optional[int] = None,
         include_summary: bool = True,
         include_details: bool = True
@@ -335,10 +335,10 @@ class ErrorTracker:
         Generate an error report with configurable verbosity and detail level.
         
         Args:
-            verbose: If True, generate detailed report. If False, generate compact one-line report.
+            compact: If True, generate compact one-line report. If False, generate detailed report.
             max_errors: Maximum number of errors to include. None means all errors.
-            include_summary: Whether to include an error summary (only used when verbose=True).
-            include_details: Whether to include detailed error listings (only used when verbose=True).
+            include_summary: Whether to include an error summary (only used when compact=False).
+            include_details: Whether to include detailed error listings (only used when compact=False).
         
         Returns:
             Formatted error report string.
@@ -347,10 +347,10 @@ class ErrorTracker:
             return "No errors detected."
         
         # Compact format for tabular data
-        if not verbose:
+        if compact:
             return self._generate_compact_report(max_errors)
         
-        # Verbose format for detailed analysis
+        # Detailed format for analysis
         return self._generate_verbose_report(include_summary, include_details, max_errors)
     
     def _generate_compact_report(self, max_errors: Optional[int] = None) -> str:

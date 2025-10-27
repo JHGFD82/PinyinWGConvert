@@ -58,7 +58,7 @@ def validate_syllable(
         return ""
     
     return syllable.error_tracker.generate_report(
-        verbose=not compact,
+        compact=compact,
         max_errors=max_errors if max_errors > 0 else None
     )
 
@@ -110,7 +110,7 @@ def validate_text(
         'error_count': syllable.error_tracker.get_error_count(),
         'error_types': syllable.error_tracker.get_error_types_list(),
         'error_report': syllable.error_tracker.generate_report(
-            verbose=not compact,
+            compact=compact,
             max_errors=max_errors if max_errors > 0 else None
         ) if syllable.error_tracker.has_errors() else "",
         'first_error': syllable.error_tracker.get_first_error_string()

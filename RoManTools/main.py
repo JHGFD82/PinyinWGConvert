@@ -197,7 +197,7 @@ def main(arg_list: Optional[List[str]] = None):
         crumbs=args.crumbs,
         error_skip=args.error_skip,
         error_report=args.error_report,
-        error_report_verbose=not args.error_compact,
+        error_report_compact=args.error_compact,
         error_report_max=args.error_max
     )
     
