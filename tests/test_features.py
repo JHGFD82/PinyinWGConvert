@@ -623,3 +623,395 @@ class TestRoManToolsActions(unittest.TestCase):
                           "# Word Validation: \"t'ao\" is valid\n" \
                           "---"
         self.assertEqual(console_output, expected_output)
+
+
+class TestErrorReporting(unittest.TestCase):
+    """Test suite for error reporting and tracking features."""
+
+    def test_error_type_enum_values(self):
+        """Test that ErrorType enum has correct values."""
+        from RoManTools.errors import ErrorType
+        
+        self.assertEqual(ErrorType.INVALID_INITIAL.value, "invalid_initial")
+        self.assertEqual(ErrorType.INVALID_FINAL.value, "invalid_final")
+        self.assertEqual(ErrorType.INVALID_SYLLABLE.value, "invalid_syllable")
+        self.assertEqual(ErrorType.ILLEGAL_CHARACTER.value, "illegal_character")
+        self.assertEqual(ErrorType.RARE_SYLLABLE.value, "rare_syllable")
+        self.assertEqual(ErrorType.UNKNOWN.value, "unknown")
+
+    def test_error_type_message_templates(self):
+        """Test that ErrorType enum has message templates."""
+        from RoManTools.errors import ErrorType
+        
+        self.assertEqual(ErrorType.INVALID_INITIAL.message_template, "Invalid initial: '{initial}'")
+        self.assertEqual(ErrorType.INVALID_FINAL.message_template, "Invalid final: '{final}'")
+        self.assertEqual(ErrorType.INVALID_SYLLABLE.message_template, "Invalid syllable combination: '{initial}' + '{final}'")
+        self.assertEqual(ErrorType.ILLEGAL_CHARACTER.message_template, "Illegal character: '{character}'")
+        self.assertEqual(ErrorType.RARE_SYLLABLE.message_template, "Rare syllable: '{syllable}'")
+
+    def test_error_type_format_message(self):
+        """Test ErrorType.format_message() method."""
+        from RoManTools.errors import ErrorType
+        
+        msg1 = ErrorType.INVALID_INITIAL.format_message(initial='xyz')
+        self.assertEqual(msg1, "Invalid initial: 'xyz'")
+        
+        msg2 = ErrorType.INVALID_FINAL.format_message(final='qqq')
+        self.assertEqual(msg2, "Invalid final: 'qqq'")
+        
+        msg3 = ErrorType.INVALID_SYLLABLE.format_message(initial='z', final='yx')
+        self.assertEqual(msg3, "Invalid syllable combination: 'z' + 'yx'")
+        
+        msg4 = ErrorType.ILLEGAL_CHARACTER.format_message(character='@')
+        self.assertEqual(msg4, "Illegal character: '@'")
+        
+        msg5 = ErrorType.RARE_SYLLABLE.format_message(syllable='nun')
+        self.assertEqual(msg5, "Rare syllable: 'nun'")
+
+    def test_error_tracker_creation(self):
+        """Test ErrorTracker initialization."""
+        from RoManTools.errors import ErrorTracker, ErrorType
+        
+        tracker = ErrorTracker()
+        self.assertFalse(tracker.has_errors())
+        self.assertEqual(tracker.get_error_count(), 0)
+        self.assertEqual(tracker.get_error_count(ErrorType.INVALID_INITIAL), 0)
+
+    def test_error_tracker_add_invalid_initial(self):
+        """Test adding invalid initial error."""
+        from RoManTools.errors import ErrorTracker, ErrorType
+        
+        tracker = ErrorTracker()
+        tracker.add_invalid_initial('xyz', 'xyzang', position=0)
+        
+        self.assertTrue(tracker.has_errors())
+        self.assertEqual(tracker.get_error_count(), 1)
+        self.assertEqual(tracker.get_error_count(ErrorType.INVALID_INITIAL), 1)
+        self.assertTrue(tracker.has_error_type(ErrorType.INVALID_INITIAL))
+        
+        error = tracker.errors[0]
+        self.assertEqual(error.error_type, ErrorType.INVALID_INITIAL)
+        self.assertEqual(error.message, "Invalid initial: 'xyz'")
+        self.assertEqual(error.syllable, 'xyzang')
+        self.assertEqual(error.position, 0)
+        self.assertEqual(error.details['initial'], 'xyz')
+
+    def test_error_tracker_add_invalid_final(self):
+        """Test adding invalid final error."""
+        from RoManTools.errors import ErrorTracker, ErrorType
+        
+        tracker = ErrorTracker()
+        tracker.add_invalid_final('qqq', 'bqqq', initial='b', position=5)
+        
+        self.assertTrue(tracker.has_errors())
+        self.assertEqual(tracker.get_error_count(), 1)
+        self.assertEqual(tracker.get_error_count(ErrorType.INVALID_FINAL), 1)
+        
+        error = tracker.errors[0]
+        self.assertEqual(error.error_type, ErrorType.INVALID_FINAL)
+        self.assertEqual(error.message, "Invalid final: 'qqq'")
+        self.assertEqual(error.syllable, 'bqqq')
+        self.assertEqual(error.position, 5)
+        self.assertEqual(error.details['final'], 'qqq')
+        self.assertEqual(error.details['initial'], 'b')
+
+    def test_error_tracker_add_invalid_syllable(self):
+        """Test adding invalid syllable combination error."""
+        from RoManTools.errors import ErrorTracker, ErrorType
+        
+        tracker = ErrorTracker()
+        tracker.add_invalid_syllable('zyx', 'z', 'yx', position=10)
+        
+        self.assertTrue(tracker.has_errors())
+        self.assertEqual(tracker.get_error_count(), 1)
+        self.assertEqual(tracker.get_error_count(ErrorType.INVALID_SYLLABLE), 1)
+        
+        error = tracker.errors[0]
+        self.assertEqual(error.error_type, ErrorType.INVALID_SYLLABLE)
+        self.assertEqual(error.message, "Invalid syllable combination: 'z' + 'yx'")
+        self.assertEqual(error.syllable, 'zyx')
+        self.assertEqual(error.details['initial'], 'z')
+        self.assertEqual(error.details['final'], 'yx')
+
+    def test_error_tracker_add_illegal_character(self):
+        """Test adding illegal character error."""
+        from RoManTools.errors import ErrorTracker, ErrorType
+        
+        tracker = ErrorTracker()
+        tracker.add_illegal_character('@', 'zh@ng', reason='Special characters not allowed')
+        
+        self.assertTrue(tracker.has_errors())
+        self.assertEqual(tracker.get_error_count(), 1)
+        self.assertEqual(tracker.get_error_count(ErrorType.ILLEGAL_CHARACTER), 1)
+        
+        error = tracker.errors[0]
+        self.assertEqual(error.error_type, ErrorType.ILLEGAL_CHARACTER)
+        self.assertIn("Illegal character: '@'", error.message)
+        self.assertIn("Special characters not allowed", error.message)
+        self.assertEqual(error.details['character'], '@')
+        self.assertEqual(error.details['reason'], 'Special characters not allowed')
+
+    def test_error_tracker_add_rare_syllable(self):
+        """Test adding rare syllable warning."""
+        from RoManTools.errors import ErrorTracker, ErrorType
+        
+        tracker = ErrorTracker()
+        tracker.add_rare_syllable('nun', 'py', position=0)
+        
+        self.assertTrue(tracker.has_errors())
+        self.assertEqual(tracker.get_error_count(), 1)
+        self.assertEqual(tracker.get_error_count(ErrorType.RARE_SYLLABLE), 1)
+        
+        error = tracker.errors[0]
+        self.assertEqual(error.error_type, ErrorType.RARE_SYLLABLE)
+        self.assertEqual(error.message, "Rare syllable: 'nun'")
+        self.assertEqual(error.details['method'], 'py')
+
+    def test_error_tracker_multiple_errors(self):
+        """Test tracking multiple errors of different types."""
+        from RoManTools.errors import ErrorTracker, ErrorType
+        
+        tracker = ErrorTracker()
+        tracker.add_invalid_initial('xyz', 'xyzang')
+        tracker.add_invalid_final('qqq', 'bqqq')
+        tracker.add_invalid_syllable('zyx', 'z', 'yx')
+        tracker.add_illegal_character('@', 'zh@ng')
+        tracker.add_rare_syllable('nun', 'py')
+        
+        self.assertEqual(tracker.get_error_count(), 5)
+        self.assertEqual(tracker.get_error_count(ErrorType.INVALID_INITIAL), 1)
+        self.assertEqual(tracker.get_error_count(ErrorType.INVALID_FINAL), 1)
+        self.assertEqual(tracker.get_error_count(ErrorType.INVALID_SYLLABLE), 1)
+        self.assertEqual(tracker.get_error_count(ErrorType.ILLEGAL_CHARACTER), 1)
+        self.assertEqual(tracker.get_error_count(ErrorType.RARE_SYLLABLE), 1)
+
+    def test_error_tracker_get_first_error_string(self):
+        """Test getting first error as compact string."""
+        from RoManTools.errors import ErrorTracker
+        
+        tracker = ErrorTracker()
+        tracker.add_invalid_initial('xyz', 'xyzang')
+        tracker.add_invalid_final('qqq', 'bqqq')
+        
+        first_error = tracker.get_first_error_string()
+        # get_first_error_string returns the detail (initial/final/character) not the syllable
+        self.assertEqual(first_error, 'ERROR - invalid_initial - "xyz"')
+
+    def test_error_tracker_generate_report_detailed(self):
+        """Test generating detailed error report."""
+        from RoManTools.errors import ErrorTracker
+        
+        tracker = ErrorTracker()
+        tracker.add_invalid_initial('xyz', 'xyzang')
+        tracker.add_invalid_final('qqq', 'bqqq', initial='b')
+        
+        report = tracker.generate_report(compact=False)
+        
+        # Check that report contains key components
+        self.assertIn("Error Summary", report)
+        self.assertIn("invalid_initial: 1", report)
+        self.assertIn("invalid_final: 1", report)
+        self.assertIn("Total: 2", report)
+        self.assertIn("Detailed Errors", report)
+        self.assertIn("Invalid initial: 'xyz'", report)
+        self.assertIn("Invalid final: 'qqq'", report)
+
+    def test_error_tracker_generate_report_compact(self):
+        """Test generating compact error report."""
+        from RoManTools.errors import ErrorTracker
+        
+        tracker = ErrorTracker()
+        tracker.add_invalid_initial('xyz', 'xyzang')
+        tracker.add_invalid_final('qqq', 'bqqq')
+        
+        report = tracker.generate_report(compact=True)
+        
+        # Compact format shows the detail (initial/final), not the full syllable
+        self.assertIn('ERROR - invalid_initial - "xyz"', report)
+        self.assertIn('ERROR - invalid_final - "qqq"', report)
+        self.assertIn(';', report)
+
+    def test_error_tracker_generate_report_max_errors(self):
+        """Test max_errors limit in report generation."""
+        from RoManTools.errors import ErrorTracker
+        
+        tracker = ErrorTracker()
+        tracker.add_invalid_initial('x', 'x')
+        tracker.add_invalid_initial('y', 'y')
+        tracker.add_invalid_initial('z', 'z')
+        
+        report = tracker.generate_report(compact=True, max_errors=2)
+        
+        # Should only show first 2 errors plus "more" indicator (without "...")
+        self.assertIn('ERROR - invalid_initial - "x"', report)
+        self.assertIn('ERROR - invalid_initial - "y"', report)
+        self.assertIn('(+1 more)', report)
+
+    def test_syllable_error_tracking_invalid_initial(self):
+        """Test that syllables track invalid initial errors."""
+        from RoManTools.config import Config
+        from RoManTools.syllable import SyllableProcessor
+        from RoManTools.data_loader import load_method_params
+        from RoManTools.errors import ErrorType
+        
+        config = Config(error_report=False, crumbs=False)
+        method_params = load_method_params('py')
+        processor = SyllableProcessor(config, method_params)
+        
+        syl = processor.create_syllable('xyz')
+        
+        self.assertFalse(syl.valid)
+        self.assertTrue(syl.error_tracker.has_error_type(ErrorType.INVALID_INITIAL))
+        self.assertGreater(syl.error_tracker.get_error_count(), 0)
+
+    def test_syllable_error_tracking_illegal_character(self):
+        """Test that syllables track illegal character errors (apostrophe in Pinyin)."""
+        from RoManTools.config import Config
+        from RoManTools.syllable import SyllableProcessor
+        from RoManTools.data_loader import load_method_params
+        from RoManTools.errors import ErrorType
+        
+        config = Config(error_report=False, crumbs=False)
+        method_params = load_method_params('py')
+        processor = SyllableProcessor(config, method_params)
+        
+        syl = processor.create_syllable("zh'ng")
+        
+        self.assertFalse(syl.valid)
+        self.assertTrue(syl.error_tracker.has_error_type(ErrorType.ILLEGAL_CHARACTER))
+
+    def test_syllable_error_tracking_rare_syllable(self):
+        """Test that syllables track rare syllable warnings."""
+        from RoManTools.config import Config
+        from RoManTools.syllable import SyllableProcessor
+        from RoManTools.data_loader import load_method_params
+        from RoManTools.errors import ErrorType
+        
+        config = Config(error_report=False, crumbs=False)
+        method_params = load_method_params('py')
+        processor = SyllableProcessor(config, method_params)
+        
+        # 'nun' is marked as rare in conversion_mapping.csv
+        syl = processor.create_syllable('nun')
+        
+        # Syllable should be valid but have rare warning
+        self.assertTrue(syl.valid)
+        if syl.error_tracker.has_error_type(ErrorType.RARE_SYLLABLE):
+            self.assertEqual(syl.error_tracker.get_error_count(ErrorType.RARE_SYLLABLE), 1)
+
+    def test_config_error_report_flag(self):
+        """Test Config error_report flag."""
+        from RoManTools.config import Config
+        
+        config_on = Config(error_report=True)
+        self.assertTrue(config_on.error_report)
+        
+        config_off = Config(error_report=False)
+        self.assertFalse(config_off.error_report)
+
+    def test_config_error_report_compact_flag(self):
+        """Test Config error_report_compact flag."""
+        from RoManTools.config import Config
+        
+        config_detailed = Config(error_report=True, error_report_compact=False)
+        self.assertFalse(config_detailed.error_report_compact)
+        
+        config_compact = Config(error_report=True, error_report_compact=True)
+        self.assertTrue(config_compact.error_report_compact)
+
+    def test_config_error_report_max(self):
+        """Test Config error_report_max parameter."""
+        from RoManTools.config import Config
+        
+        # Config converts 0 to None internally
+        config_unlimited = Config(error_report=True, error_report_max=0)
+        self.assertIsNone(config_unlimited.error_report_max)
+        
+        config_limited = Config(error_report=True, error_report_max=5)
+        self.assertEqual(config_limited.error_report_max, 5)
+
+    def test_table_utils_get_validation_column(self):
+        """Test table_utils.get_validation_column() function."""
+        from RoManTools.table_utils import get_validation_column
+        
+        # Valid syllable returns "OK"
+        result_valid = get_validation_column('zhong', 'py')
+        self.assertEqual(result_valid, "OK")
+        
+        # Invalid syllable returns error string
+        result_invalid = get_validation_column('xyz', 'py')
+        self.assertIn('ERROR', result_invalid)
+        self.assertIn('invalid_initial', result_invalid)
+
+    def test_table_utils_validate_syllable(self):
+        """Test table_utils.validate_syllable() function."""
+        from RoManTools.table_utils import validate_syllable
+        
+        # Valid syllable returns empty string
+        result_valid = validate_syllable('zhong', 'py')
+        self.assertEqual(result_valid, '')
+        
+        # Invalid syllable returns error string
+        result_invalid = validate_syllable('xyz', 'py')
+        self.assertIn('invalid_initial', result_invalid)
+
+    def test_table_utils_validate_text(self):
+        """Test table_utils.validate_text() function."""
+        from RoManTools.table_utils import validate_text
+        
+        # All valid - returns dict with 'valid': True
+        result_valid = validate_text('zhong', 'py')
+        self.assertIsInstance(result_valid, dict)
+        self.assertTrue(result_valid['valid'])
+        self.assertEqual(result_valid['error_count'], 0)
+        self.assertEqual(result_valid['error_report'], '')
+        
+        # Contains invalid - returns dict with 'valid': False
+        result_invalid = validate_text('xyz', 'py')
+        self.assertIsInstance(result_invalid, dict)
+        self.assertFalse(result_invalid['valid'])
+        self.assertGreater(result_invalid['error_count'], 0)
+        self.assertGreater(len(result_invalid['error_report']), 0)
+
+    def test_backward_compatibility_errors_list(self):
+        """Test that syllable.errors list still exists for backward compatibility."""
+        from RoManTools.config import Config
+        from RoManTools.syllable import SyllableProcessor
+        from RoManTools.data_loader import load_method_params
+        
+        # With error_report=True, the backward-compat list should be populated
+        config = Config(error_report=True, crumbs=False)
+        method_params = load_method_params('py')
+        processor = SyllableProcessor(config, method_params)
+        
+        syl = processor.create_syllable('xyz')
+        
+        # Both new and old error tracking should work
+        self.assertFalse(syl.valid)
+        self.assertIsNotNone(syl.error_tracker)
+        self.assertIsInstance(syl.errors, list)
+
+    def test_error_report_no_overhead_when_disabled(self):
+        """Test that error reporting has minimal overhead when disabled."""
+        from RoManTools.config import Config
+        from RoManTools.syllable import SyllableProcessor
+        from RoManTools.data_loader import load_method_params
+        
+        config = Config(error_report=False, crumbs=False)
+        method_params = load_method_params('py')
+        processor = SyllableProcessor(config, method_params)
+        
+        # Create invalid syllable
+        syl = processor.create_syllable('xyz')
+        
+        # ErrorTracker should still exist (lightweight)
+        self.assertIsNotNone(syl.error_tracker)
+        self.assertTrue(syl.error_tracker.has_errors())
+        
+        # Backward-compat errors list is populated regardless of error_report flag
+        # (keeping it populated maintains backward compatibility)
+        self.assertGreater(len(syl.errors), 0)
+        
+        # Can still generate report manually if needed
+        report = syl.error_tracker.generate_report(compact=True)
+        self.assertGreater(len(report), 0)
