@@ -5,6 +5,7 @@ This module provides classes and methods for processing and validating syllables
 - Initializing syllable processing with configuration settings.
 - Creating and validating syllables.
 - Handling different romanization methods (Pinyin and Wade-Giles).
+- Tracking and reporting validation errors.
 
 Classes:
     SyllableProcessor: Handles the loading of configuration settings and initializes data required for processing syllables.
@@ -14,10 +15,12 @@ Classes:
 # from functools import lru_cache
 import re
 import logging
-from typing import Tuple, Optional, Dict, Union, List
+from typing import Tuple, Optional, Dict, Union, List, Set
 from .config import Config
 from .constants import vowels, apostrophes, dashes
 from .strategies import RomanizationStrategyFactory
+from .errors import ErrorTracker
+from .data_loader import load_rare_syllables
 
 
 # Type alias for method_params for clarity and maintainability
@@ -47,6 +50,12 @@ class SyllableProcessor:
         
         # Initialize the appropriate strategy for this romanization method
         self.strategy = RomanizationStrategyFactory.create_strategy(str(self.method), self)
+        
+        # Load rare syllables data
+        self.rare_syllables: Dict[str, Set[str]] = load_rare_syllables()
+        
+        # Initialize error tracker
+        self.error_tracker = ErrorTracker()
 
     def create_syllable(self, text: str, remainder: str = "") -> "Syllable":
         """
@@ -65,7 +74,7 @@ class SyllableProcessor:
         # return result
         return Syllable(text, self, remainder)
     
-    def validate_final_using_array(self, initial: str, final: str, silent: bool = False) -> bool:
+    def validate_final_using_array(self, initial: str, final: str, silent: bool = False, error_tracker: Optional[ErrorTracker] = None) -> bool:
         """
         Validates the final part of the syllable by checking against the validation array.
         This method is used by strategies to validate syllable components.
@@ -74,6 +83,7 @@ class SyllableProcessor:
             initial (str): The initial part of the syllable.
             final (str): The final part of the syllable.
             silent (bool): If True, suppresses crumb output for validation errors.
+            error_tracker (Optional[ErrorTracker]): Error tracker to record validation errors.
 
         Returns:
             bool: True if the final is valid, otherwise False.
@@ -88,14 +98,43 @@ class SyllableProcessor:
                 error_parts: List[str] = []
                 if initial_index == -1:
                     error_parts.append(f"invalid initial: '{initial}'")
+                    # Track error in the error tracker if provided
+                    if error_tracker:
+                        error_tracker.add_invalid_initial(
+                            initial if initial != 'ø' else '',
+                            initial + final
+                        )
                 if final_index == -1:
                     error_parts.append(f"invalid final: '{final}'")
+                    # Track error in the error tracker if provided
+                    if error_tracker:
+                        error_tracker.add_invalid_final(
+                            final,
+                            initial + final,
+                            initial if initial != 'ø' else ''
+                        )
                 error_message = ", ".join(error_parts)
                 self.config.print_crumb(3, "Validation", error_message, log_level=logging.ERROR)
             return False
             
         # Check the validity of the initial-final combination using the syllable array
-        return bool(self.ar[initial_index][final_index])
+        is_valid = bool(self.ar[initial_index][final_index])
+        
+        # If the combination is invalid, track it
+        if not is_valid and not silent and error_tracker:
+            error_tracker.add_invalid_syllable(
+                initial + final,
+                initial if initial != 'ø' else '',
+                final
+            )
+            self.config.print_crumb(
+                3,
+                "Validation",
+                f"invalid syllable combination: '{initial}' + '{final}'",
+                log_level=logging.ERROR
+            )
+        
+        return is_valid
 
 
 class SyllableTextAttributes:
@@ -171,9 +210,18 @@ class Syllable:
         self.text_attr = SyllableTextAttributes(text, remainder)
         self.valid = False
         self.status_attr = SyllableStatusAttributes(text)
-        self.errors: List[str] = []
+        self.errors: List[str] = []  # Keep for backward compatibility
+        self.error_tracker = ErrorTracker()  # New error tracking system
+        
+        # Check for illegal characters before processing
+        self._check_illegal_characters(text)
+        
         self._handle_first_char()
         self._process_syllable()
+        
+        # Check for rare syllables if valid
+        if self.valid:
+            self._check_rare_syllable()
 
     def apply_caps(self, text: str) -> str:
         """
@@ -271,6 +319,7 @@ class Syllable:
                 # Otherwise, all text up to this point is the initial
                 if (initial := text[:i]) not in self.processor.init_list:  # Check if the initial is valid
                     self.errors.append(f"invalid initial: '{initial}'")
+                    self.error_tracker.add_invalid_initial(initial, text)
                     return text[:i]  # Return text up to this point if not valid
                 return initial
             if c in apostrophes:  # Handle apostrophes using strategy
@@ -316,6 +365,7 @@ class Syllable:
         # If no valid finals are found, return the text up to the vowel
         if not test_finals:
             self.errors.append(f"invalid final: '{text}'")
+            self.error_tracker.add_invalid_final(text, self.text_attr.full_syllable or text, initial)
             if i == 0:
                 return None
             up_to_vowel = text[:i]
@@ -381,7 +431,7 @@ class Syllable:
         Returns:
             bool: True if the final is valid, otherwise False.
         """
-        return self.processor.validate_final_using_array(initial, final, silent)
+        return self.processor.validate_final_using_array(initial, final, silent, self.error_tracker)
 
     def _validate_syllable(self) -> bool:
         """
@@ -395,3 +445,32 @@ class Syllable:
         if self.text_attr.initial == '':
             return self._validate_final('ø', self.text_attr.final)
         return self._validate_final(self.text_attr.initial, self.text_attr.final)
+    
+    def _check_illegal_characters(self, text: str) -> None:
+        """
+        Check for illegal characters in the syllable text using the romanization strategy.
+        
+        Args:
+            text: The original syllable text to check.
+        """
+        illegal_chars = self.processor.strategy.check_illegal_characters(text, self)
+        for char, reason in illegal_chars:
+            self.error_tracker.add_illegal_character(char, text, reason)
+            if self.processor.config.error_report:
+                self.errors.append(f"illegal character: '{char}' - {reason}")
+    
+    def _check_rare_syllable(self) -> None:
+        """
+        Check if the validated syllable is marked as rare in the conversion data.
+        """
+        method = str(self.processor.method)
+        full_syllable_lower = self.text_attr.full_syllable.lower()
+        
+        if method in self.processor.rare_syllables:
+            if full_syllable_lower in self.processor.rare_syllables[method]:
+                self.error_tracker.add_rare_syllable(
+                    self.text_attr.full_syllable,
+                    method
+                )
+                if self.processor.config.error_report:
+                    self.errors.append(f"rare syllable in {method}: '{self.text_attr.full_syllable}'")

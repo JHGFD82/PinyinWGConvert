@@ -6,6 +6,7 @@ based on the specified romanization method (e.g., Pinyin, Wade-Giles). It includ
 - Creating words from syllables (as a list of Syllable objects).
 - Validating and converting syllables.
 - Handling contractions and stopwords.
+- Collecting and reporting validation errors.
 
 Classes:
     WordProcessor: Processes words and their syllables based on the specified romanization method.
@@ -18,6 +19,7 @@ from .config import Config
 from .syllable import Syllable
 from .constants import supported_contractions, vowels
 from .conversion import RomanizationConverter
+from .errors import ErrorTracker
 
 
 class WordProcessor:
@@ -93,7 +95,12 @@ class Word:
         self.final_word = ""
         self.valid = self.all_valid()
         self.contraction = self.is_contraction()
-        self._stopword_logged = False 
+        self._stopword_logged = False
+        
+        # Collect errors from all syllables
+        self.error_tracker = ErrorTracker()
+        for syl in self.syllables:
+            self.error_tracker.merge(syl.error_tracker) 
 
     def _create_preview_word(self) -> str:
         """
@@ -288,4 +295,28 @@ class Word:
         self.convert()
         self.apply_caps()
         self.add_symbols()
+        
+        # Report errors if error_report is enabled
+        if self.processor.config.error_report and self.error_tracker.has_errors():
+            error_report = self.error_tracker.generate_report(
+                verbose=self.processor.config.error_report_verbose,
+                max_errors=self.processor.config.error_report_max,
+                include_summary=False,
+                include_details=True
+            )
+            
+            # For verbose reports, include word context
+            if self.processor.config.error_report_verbose:
+                message = f"'{self.preview_word}':\n{error_report}"
+            else:
+                # For compact reports, just show the error
+                message = f"'{self.preview_word}': {error_report}"
+            
+            self.processor.config.print_crumb(
+                1,
+                "Errors in word",
+                message,
+                log_level=logging.WARNING
+            )
+        
         return self.final_word
