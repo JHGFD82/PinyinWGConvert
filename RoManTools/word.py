@@ -312,11 +312,7 @@ class Word:
                 # For compact reports, just show the error
                 message = f"'{self.preview_word}': {error_report}"
             
-            self.processor.config.print_crumb(
-                1,
-                "Errors in word",
-                message,
-                log_level=logging.WARNING
-            )
+            # Print error report directly (independent of crumbs setting)
+            self.processor.config.logger.warning(f"# Errors in word: {message}")
         
         return self.final_word
