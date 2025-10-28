@@ -12,6 +12,8 @@ Classes:
 """
 
 import logging
+import argparse
+from typing import Union, Dict, Any
 
 
 class Config:
@@ -47,6 +49,54 @@ class Config:
         self.logger = logging.getLogger(__name__)
         if not logging.getLogger().hasHandlers():  # pragma: no cover
             logging.basicConfig(level=logging.INFO, format='%(levelname)5s: %(message)s')  # pragma: no cover
+
+    @staticmethod
+    def from_args(args: Union[argparse.Namespace, Dict[str, Any]]) -> "Config":
+        """
+        Create a Config instance from argparse.Namespace or a dictionary.
+        
+        This factory method simplifies Config creation by automatically extracting
+        the relevant attributes from CLI arguments or a dictionary.
+        
+        Args:
+            args: Either an argparse.Namespace from CLI parsing or a dict with config parameters.
+                  Expected attributes/keys:
+                  - crumbs (bool): Include step-by-step analysis
+                  - error_skip (bool): Skip errors instead of aborting
+                  - error_report (bool): Enable error reporting
+                  - error_compact (bool): Use compact error format
+                  - error_max (int): Maximum number of errors to report
+        
+        Returns:
+            Config: A new Config instance with values from args.
+        
+        Examples:
+            >>> # From argparse.Namespace
+            >>> args = argparse.Namespace(crumbs=True, error_skip=False, error_report=True, 
+            ...                           error_compact=False, error_max=0)
+            >>> config = Config.from_args(args)
+            
+            >>> # From dictionary
+            >>> config = Config.from_args({'crumbs': True, 'error_report': True})
+        """
+        # Handle both Namespace and dict
+        if isinstance(args, dict):
+            return Config(
+                crumbs=args.get('crumbs', False),
+                error_skip=args.get('error_skip', False),
+                error_report=args.get('error_report', False),
+                error_report_compact=args.get('error_compact', False),
+                error_report_max=args.get('error_max', 0)
+            )
+        else:
+            # argparse.Namespace
+            return Config(
+                crumbs=getattr(args, 'crumbs', False),
+                error_skip=getattr(args, 'error_skip', False),
+                error_report=getattr(args, 'error_report', False),
+                error_report_compact=getattr(args, 'error_compact', False),
+                error_report_max=getattr(args, 'error_max', 0)
+            )
 
     def print_crumb(self, level: int = 0, stage: str = '', message: str = '', footer: bool = False, log_level: int = logging.INFO):
         """

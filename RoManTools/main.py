@@ -193,14 +193,8 @@ def main(arg_list: Optional[List[str]] = None):
     # Validate that error_compact and error_max are only used with error_report
     validate_error_reporting_args(args, parser)
     
-    # Create the Config object (only when we have an action)
-    config = Config(
-        crumbs=args.crumbs,
-        error_skip=args.error_skip,
-        error_report=args.error_report,
-        error_report_compact=args.error_compact,
-        error_report_max=args.error_max
-    )
+    # Create the Config object from parsed arguments
+    config = Config.from_args(args)
     
     # Print starting timestamp if crumbs is enabled
     from datetime import datetime
