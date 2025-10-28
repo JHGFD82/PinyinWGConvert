@@ -23,11 +23,20 @@ from typing import Optional, List, Dict, Callable
 from .config import Config
 from .utils import convert_text, cherry_pick, segment_text, syllable_count, detect_method, validator
 from .constants import method_shorthand_to_full, supported_methods, supported_actions, supported_config
+from .cli_validators import (
+    normalize_method,
+    validate_error_reporting_args,
+    validate_action_specified,
+    normalize_action_key
+)
 
 
 def _normalize_method(method: str) -> str:
     """
     Normalize a romanization method string to a standard shorthand format.
+    
+    This is a wrapper around the cli_validators.normalize_method function
+    that provides the necessary constants from this module's scope.
 
     Args:
         method (str): The romanization method string (e.g., 'pinyin', 'py', 'wade-giles', 'wg').
@@ -38,13 +47,7 @@ def _normalize_method(method: str) -> str:
     Raises:
         argparse.ArgumentTypeError: If the method is not recognized.
     """
-
-    method = method.lower()
-    if method in supported_methods:
-        return supported_methods[method]['shorthand']
-    if method in method_shorthand_to_full:
-        return method
-    raise argparse.ArgumentTypeError(f"Invalid romanization method: {method}")
+    return normalize_method(method, supported_methods, method_shorthand_to_full)
 
 
 # ACTION FUNCTIONS #
@@ -183,14 +186,12 @@ def main(arg_list: Optional[List[str]] = None):
         _list_methods()
         return
     
-    # If no action is specified, show help
-    if not args.action:
-        parser.print_help()
+    # Validate that an action was specified
+    if not validate_action_specified(args, parser):
         return
     
     # Validate that error_compact and error_max are only used with error_report
-    if (args.error_compact or args.error_max != 0) and not args.error_report:
-        parser.error("--error_compact and --error_max require --error_report (-R) to be enabled")
+    validate_error_reporting_args(args, parser)
     
     # Create the Config object (only when we have an action)
     config = Config(
@@ -205,8 +206,8 @@ def main(arg_list: Optional[List[str]] = None):
     from datetime import datetime
     config.print_crumb(level=1, stage='Start', message=datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
     
-    # Use alias_maps to get pretty action name (handle hyphenated names)
-    action_key = args.action.replace('-', '_')
+    # Normalize action key (convert hyphens to underscores)
+    action_key = normalize_action_key(args.action)
     pretty_action = supported_actions[action_key]['pretty']
     config.print_crumb(level=1, stage='Performing action', message=f'{pretty_action}')
     
