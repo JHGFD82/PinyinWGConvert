@@ -1,17 +1,20 @@
 """
-Command-line interface (CLI) for RoManTools: Romanized Mandarin text processing utilities.
+The command-line entry point: what actually runs when you type `RoManTools`
+in a terminal.
 
-This module provides the main entry point for the RoManTools package, enabling users to perform various text processing actions via the command line, including:
-- Segmenting text into syllables.
-- Converting between romanization standards.
-- Cherry-picking romanized words for conversion.
-- Counting syllables.
-- Detecting romanization methods.
-- Validating romanized text.
+This module builds the command-line interface (CLI) using Python's built-in
+`argparse` library, which reads whatever the user typed after `RoManTools`
+and turns it into structured data instead of a raw string. `segment`,
+`convert`, `cherry-pick`, and the rest are what argparse calls
+subcommands - each one has its own required/optional pieces of information
+(arguments), like the `text` to process or a `-m`/`--method` flag saying
+which romanization method to use. Once argparse has sorted all of that out,
+this module builds a Config (see config.py) from the flags the user set,
+and calls the matching function in actions.py.
 
 Functions:
     main(arg_list: Optional[List[str]] = None):
-        Parses command-line arguments and dispatches the appropriate processing action.
+        Parse command-line arguments and run the requested action.
 
 Usage Example:
     $ romantools segment "Zhongguo ti'an tianqi" -m py
@@ -33,24 +36,29 @@ from .cli_validators import (
 
 def _normalize_method(method: str) -> str:
     """
-    Normalize a romanization method string to a standard shorthand format.
-    
-    This is a wrapper around the cli_validators.normalize_method function
-    that provides the necessary constants from this module's scope.
+    Turn whatever the user typed for a romanization method ('pinyin', 'py',
+    'Wade-Giles', 'wg', ...) into the standard two-letter shorthand ('py',
+    'wg') the rest of the package expects. Used as argparse's `type=` for
+    every `-m`/`-f`/`-t` argument below, so it runs automatically as part of
+    argument parsing, before any action code sees the value.
 
     Args:
-        method (str): The romanization method string (e.g., 'pinyin', 'py', 'wade-giles', 'wg').
+        method (str): Whatever the user typed for the method.
 
     Returns:
-        str: The normalized shorthand for the romanization method (e.g., 'py', 'wg').
+        str: The standard shorthand ('py' or 'wg').
 
     Raises:
-        argparse.ArgumentTypeError: If the method is not recognized.
+        argparse.ArgumentTypeError: If the method isn't recognized -
+            argparse turns this into a clean command-line error message
+            automatically.
     """
     return normalize_method(method, supported_methods, method_shorthand_to_full)
 
 
 # ACTION FUNCTIONS #
+# One small function per subcommand, each just unpacking the relevant
+# parsed arguments and calling the matching function in actions.py.
 def _segment_action(args: argparse.Namespace, config: Config):
     return segment_text(args.text, args.method, config)
 
@@ -76,7 +84,8 @@ def _detect_method_action(args: argparse.Namespace, config: Config):
     return detect_method(args.text, args.per_word, config)
 
 
-# Map actions to functions
+# Which function to call for each subcommand name, so main() below can look
+# it up rather than needing a long if/elif chain.
 ACTIONS: Dict[str, Callable[[argparse.Namespace, Config], object]] = {
     "segment": _segment_action,
     "validator": _validator_action,
@@ -89,13 +98,20 @@ ACTIONS: Dict[str, Callable[[argparse.Namespace, Config], object]] = {
 
 def main(arg_list: Optional[List[str]] = None):
     """
-    Main entry point for the RoManTools CLI. Parses arguments and dispatches the requested action.
+    The CLI's entry point: read the command line, figure out which
+    subcommand was requested, and run it.
 
     Args:
-        arg_list (Optional[List[str]]): List of arguments to parse (for testing or programmatic use). If None, uses sys.argv.
+        arg_list (Optional[List[str]]): The arguments to parse, as a list
+            of strings - mainly useful for tests and other Python code
+            that wants to invoke the CLI programmatically. If None (the
+            normal case, when a user runs `RoManTools ...` in a terminal),
+            argparse reads the real command line instead.
 
     Raises:
-        argparse.ArgumentError: If invalid arguments are provided.
+        argparse.ArgumentError: If the arguments given don't parse (e.g. a
+            required flag is missing) - argparse itself prints a usage
+            message and exits before this ever propagates further.
 
     Example:
         >>> main(['segment', "Zhongguo ti'an tianqi", '-m', 'py'])
@@ -103,18 +119,21 @@ def main(arg_list: Optional[List[str]] = None):
     """
 
     from .__init__ import __version__
-    
+
     parser = argparse.ArgumentParser(description='RoManTools: Romanized Mandarin Tools')
-    
+
     # Global arguments
     parser.add_argument('--version', action='version', version=f'RoManTools {__version__}')
-    parser.add_argument('--list-methods', action='store_true', 
+    parser.add_argument('--list-methods', action='store_true',
                        help='List all supported romanization methods')
-    
+
     # Create subparsers
     subparsers = parser.add_subparsers(dest='action', help='Available actions')
 
-    # Create a parent parser for common arguments shared by all subcommands
+    # A "parent" parser holds the debugging/error-reporting flags shared by
+    # every subcommand (-C, -S, -R, etc. below), so they only need to be
+    # defined once and are then attached to each subcommand via
+    # `parents=[parent_parser]` further down.
     parent_parser = argparse.ArgumentParser(add_help=False)
     parent_parser.add_argument('-C', '--crumbs', action='store_true',
                               help='Include step-by-step analysis in the output')

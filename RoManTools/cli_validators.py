@@ -1,14 +1,23 @@
 """
-CLI argument validation utilities for RoManTools.
+Checks on the command-line arguments the user typed, beyond what argparse
+handles on its own.
 
-This module provides validation functions for command-line arguments to ensure
-that argument combinations are valid and meet the requirements of the tool.
+`argparse` (see main.py) takes care of the basics - is a required argument
+present, does a flag's value have the right type - but a few rules need
+custom checks that argparse can't express by itself: some flags only make
+sense in combination with others, and romanization method names need to be
+normalized before the rest of the package sees them. That's what the
+functions here do.
 
 Functions:
-    normalize_method: Normalize romanization method string to standard shorthand format.
-    validate_error_reporting_args: Validates that error reporting options are only used with --error_report.
-    validate_action_specified: Validates that an action was specified or handles special cases.
-    normalize_action_key: Normalizes action names (converts hyphens to underscores).
+    normalize_method: Turn any accepted spelling of a romanization method
+        into its standard shorthand ('py', 'wg').
+    validate_error_reporting_args: Make sure --error_compact/--error_max are
+        only used together with --error_report.
+    validate_action_specified: Make sure the user actually picked a
+        subcommand (segment, convert, etc.).
+    normalize_action_key: Turn a hyphenated subcommand name ('cherry-pick')
+        into the underscored form used internally ('cherry_pick').
 """
 
 import argparse
@@ -17,22 +26,23 @@ from typing import Dict
 
 def normalize_method(method: str, supported_methods: Dict[str, Dict[str, str]], method_shorthand_to_full: Dict[str, str]) -> str:
     """
-    Normalize a romanization method string to a standard shorthand format.
-    
-    This function accepts various forms of romanization method names (e.g., 'pinyin', 'py',
-    'wade-giles', 'wg') and converts them to the canonical shorthand format.
+    Accept any of the ways a user might type a romanization method
+    ('pinyin', 'py', 'Wade-Giles', 'wg', ...) and return the standard
+    two-letter shorthand.
 
     Args:
-        method (str): The romanization method string (e.g., 'pinyin', 'py', 'wade-giles', 'wg').
-        supported_methods (dict): Dictionary of supported methods with their metadata.
-        method_shorthand_to_full (dict): Mapping from shorthand to full method names.
+        method (str): Whatever the user typed for the method.
+        supported_methods (dict): The full method-name-to-metadata mapping
+            (see constants.supported_methods).
+        method_shorthand_to_full (dict): The shorthand-to-full-name mapping
+            (see constants.method_shorthand_to_full).
 
     Returns:
-        str: The normalized shorthand for the romanization method (e.g., 'py', 'wg').
+        str: The standard shorthand ('py' or 'wg').
 
     Raises:
-        argparse.ArgumentTypeError: If the method is not recognized.
-        
+        argparse.ArgumentTypeError: If the method isn't recognized.
+
     Example:
         >>> normalize_method('pinyin', {'pinyin': {'shorthand': 'py'}}, {'py': 'pinyin'})
         'py'
@@ -49,49 +59,56 @@ def normalize_method(method: str, supported_methods: Dict[str, Dict[str, str]], 
 
 def validate_error_reporting_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
     """
-    Validate that error reporting options are only used when --error_report is enabled.
-    
-    This ensures that --error_compact and --error_max are not specified without
-    the main --error_report flag, as they have no effect without error reporting enabled.
-    
+    Make sure `--error_compact`/`--error_max` are only used alongside
+    `--error_report` (`-R`) - on their own, they'd have no effect, which
+    would be confusing rather than useful, so this rejects that combination
+    with a clear command-line error instead of silently ignoring it.
+
     Args:
-        args (argparse.Namespace): Parsed command-line arguments.
-        parser (argparse.ArgumentParser): The argument parser instance for error reporting.
-    
+        args (argparse.Namespace): The parsed command-line arguments (the
+            object argparse produces after reading the command line).
+        parser (argparse.ArgumentParser): The parser to report the error
+            through, so the message is formatted the same way as any other
+            argparse error.
+
     Raises:
-        SystemExit: If validation fails, exits with an error message.
-    
+        SystemExit: If the invalid combination was used - `parser.error()`
+            prints a usage message and exits, the same as any other invalid
+            argument combination argparse itself would catch.
+
     Example:
         >>> parser = argparse.ArgumentParser()
-        >>> args = argparse.Namespace(error_report=False, error_compact=True, error_max=0)
-        >>> validate_error_reporting_args(args, parser)  # Will raise error
+        >>> args = argparse.Namespace(error_report=True, error_compact=True, error_max=0)
+        >>> validate_error_reporting_args(args, parser)  # Fine - error_report is on
     """
     if not hasattr(args, 'error_report') or not hasattr(args, 'error_compact'):
         # If these attributes don't exist, no validation needed (e.g., --list-methods)
         return
-    
+
     if (args.error_compact or args.error_max != 0) and not args.error_report:
         parser.error("--error_compact and --error_max require --error_report (-R) to be enabled")
 
 
 def validate_action_specified(args: argparse.Namespace, parser: argparse.ArgumentParser) -> bool:
     """
-    Validate that an action was specified in the command-line arguments.
-    
-    If no action is provided, displays the parser help message.
-    
+    Make sure the user actually picked a subcommand (segment, convert,
+    etc.). If not, print the same help text `RoManTools --help` would show,
+    rather than failing with a less helpful error.
+
     Args:
-        args (argparse.Namespace): Parsed command-line arguments.
-        parser (argparse.ArgumentParser): The argument parser instance for displaying help.
-    
+        args (argparse.Namespace): The parsed command-line arguments.
+        parser (argparse.ArgumentParser): The parser to print help from.
+
     Returns:
-        bool: True if an action was specified, False if no action (help was printed).
-    
+        bool: True if a subcommand was given. False if not (in which case
+            the help text has already been printed, and main() should stop
+            without trying to run anything).
+
     Example:
         >>> parser = argparse.ArgumentParser()
-        >>> args = argparse.Namespace(action=None)
-        >>> validate_action_specified(args, parser)  # Will print help
-        False
+        >>> args = argparse.Namespace(action='segment')
+        >>> validate_action_specified(args, parser)
+        True
     """
     if not args.action:
         parser.print_help()
@@ -101,17 +118,18 @@ def validate_action_specified(args: argparse.Namespace, parser: argparse.Argumen
 
 def normalize_action_key(action: str) -> str:
     """
-    Normalize action names by converting hyphens to underscores.
-    
-    This allows CLI commands to use hyphenated names (e.g., 'cherry-pick')
-    while using Python-friendly names internally (e.g., 'cherry_pick').
-    
+    Turn a hyphenated subcommand name into the underscored form used
+    internally - the CLI accepts `cherry-pick` (hyphens read more naturally
+    on a command line), but Python identifiers can't contain hyphens, so
+    internal lookups (like the ACTIONS dictionary in main.py) use
+    `cherry_pick` instead.
+
     Args:
-        action (str): The action name from command-line (may contain hyphens).
-    
+        action (str): The subcommand name as typed on the command line.
+
     Returns:
-        str: The normalized action name with underscores.
-    
+        str: The same name with hyphens replaced by underscores.
+
     Example:
         >>> normalize_action_key('cherry-pick')
         'cherry_pick'

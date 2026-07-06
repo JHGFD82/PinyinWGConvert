@@ -1,17 +1,28 @@
 """
-Utility functions for validating romanized Mandarin text in tabular data.
+Validating romanized text one syllable at a time - built for spreadsheet-
+and dataset-style workflows.
 
-This module provides convenience functions for use with pandas DataFrames and other
-tabular data structures, making it easy to validate romanized text and get error reports
-suitable for table columns.
+If you're checking a whole column of romanized names or terms (for example,
+in a pandas DataFrame - the table-shaped object pandas, a popular Python
+data-analysis library, uses to hold spreadsheet-like data), you usually
+want one validation result per row, not the full segment/convert pipeline
+the rest of the package is built around. These functions are a shortcut for
+exactly that: hand one syllable to `df['column'].apply(...)` and get back
+either a simple "OK"/error string or a full breakdown.
+
+Note: these functions aren't included in `from RoManTools import *` - import
+them from `RoManTools.table_utils` directly, as shown below.
 
 Functions:
-    validate_syllable(text: str, method: str, compact: bool, max_errors: int) -> str:
-        Validate a single syllable and return error report string.
-    validate_text(text: str, method: str, compact: bool, max_errors: int) -> Dict[str, Any]:
-        Validate text and return structured error information.
-    get_validation_column(text: str, method: str) -> str:
-        Get a simple validation result for a table column (OK or error).
+    validate_syllable(text, method, compact, max_errors) -> str:
+        Validate one syllable and return an error report string.
+    validate_text(text, method, compact, max_errors) -> Dict[str, Any]:
+        Validate one syllable and return a structured dictionary of
+        everything about the result (despite the name, this validates one
+        syllable at a time, the same as validate_syllable - "text" here
+        just matches the parameter name used elsewhere in the package).
+    get_validation_column(text, method) -> str:
+        The simplest option: "OK", or a short description of what's wrong.
 """
 
 from typing import Dict, Any
