@@ -21,7 +21,7 @@ Usage Example:
 import argparse
 from typing import Optional, List, Dict, Callable
 from .config import Config
-from .utils import convert_text, cherry_pick, segment_text, syllable_count, detect_method, validator
+from .actions import convert_text, cherry_pick, segment_text, syllable_count, detect_method, validator
 from .constants import method_shorthand_to_full, supported_methods, supported_actions, supported_config
 from .cli_validators import (
     normalize_method,

@@ -3,7 +3,7 @@ from io import StringIO
 import logging
 from typing import List
 
-from RoManTools.utils import convert_text, cherry_pick, segment_text, syllable_count, detect_method, validator
+from RoManTools.actions import convert_text, cherry_pick, segment_text, syllable_count, detect_method, validator
 from RoManTools.config import Config
 from RoManTools.data_loader import load_conversion_data, load_method_params
 from RoManTools.constants import vowels

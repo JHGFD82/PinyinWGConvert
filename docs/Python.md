@@ -1,6 +1,6 @@
 # RoManTools Function Call Documentation
 
-This document provides an overview of the public functions available when importing the RoManTools package directly (`from RoManTools import ...`). All are re-exported from `RoManTools/utils.py` via `RoManTools/__init__.py`. All examples below were verified against the current package.
+This document provides an overview of the public functions available when importing the RoManTools package directly (`from RoManTools import ...`). All are re-exported from `RoManTools/actions.py` via `RoManTools/__init__.py`. All examples below were verified against the current package.
 
 ## Public Methods
 
