@@ -1,8 +1,13 @@
 """
-Strategy factory for creating appropriate romanization strategies.
+Picking the right strategy object for a given romanization method.
 
-This module contains the factory class responsible for creating the correct
-strategy instance based on the romanization method identifier.
+Every place in the codebase that needs a Pinyin-specific or Wade-Giles-
+specific strategy object (see base.py for what a "strategy" is) asks this
+module for one, instead of constructing `PinyinStrategy(...)` or
+`WadeGilesStrategy(...)` directly. That keeps the "which method maps to
+which class" decision in exactly one place. A class whose job is
+specifically to build the right object for you, based on some input, is
+often called a factory - hence the name.
 """
 
 from typing import TYPE_CHECKING, Dict, Type
@@ -17,64 +22,61 @@ if TYPE_CHECKING:
 
 class RomanizationStrategyFactory:
     """
-    Factory for creating appropriate romanization strategies.
-    
-    This factory encapsulates the logic for strategy selection and instantiation,
-    making it easy to add new romanization methods without modifying existing code.
+    Builds the correct strategy object for a given romanization method
+    shorthand ('py', 'wg'). See the module docstring above for why this
+    exists as its own class.
     """
-    
+
     @staticmethod
     def create_strategy(method: str, processor: "SyllableProcessor") -> RomanizationStrategy:
         """
-        Create the appropriate strategy for the given romanization method.
-        
         Args:
-            method: The romanization method identifier ('py', 'wg', etc.).
-            processor: The SyllableProcessor instance.
-            
+            method: The romanization method's shorthand ('py', 'wg', etc.).
+            processor: The SyllableProcessor the new strategy should work
+                with (see base.py's RomanizationStrategy.__init__).
+
         Returns:
-            The appropriate strategy instance.
-            
+            The matching strategy instance.
+
         Raises:
-            ValueError: If the method is not supported.
+            ValueError: If `method` isn't one RoManTools supports.
         """
         strategies: Dict[str, Type[RomanizationStrategy]] = {
             'py': PinyinStrategy,
             'wg': WadeGilesStrategy,
         }
-        
+
         strategy_class = strategies.get(method)
         if strategy_class is None:
             available_methods = ', '.join(method_shorthand_to_full.keys())
             raise ValueError(f"Unsupported romanization method: '{method}'. Available methods: {available_methods}")
-            
+
         return strategy_class(processor)
-    
+
     @staticmethod
     def get_available_methods() -> list[str]:
         """
-        Get a list of all available romanization methods.
-        
         Returns:
-            List of available method identifiers.
+            list[str]: The shorthand of every romanization method currently
+                supported.
         """
         return list(method_shorthand_to_full.keys())
-    
+
     @staticmethod
     def register_strategy(method: str, strategy_class: Type[RomanizationStrategy]) -> None:
         """
-        Register a new strategy class for a romanization method.
-        
-        This method allows for dynamic registration of new strategies without
-        modifying the factory code directly.
-        
+        Placeholder for adding a new romanization method's strategy at
+        runtime, without editing this file's `strategies` dictionary
+        directly. Not implemented yet - for now, adding a method means
+        adding it to that dictionary in create_strategy above (see
+        CLAUDE.md's "Adding New Romanization Methods" section for the full
+        set of steps).
+
         Args:
-            method: The romanization method identifier.
-            strategy_class: The strategy class to register.
-            
+            method: The romanization method's shorthand.
+            strategy_class: The strategy class to associate with it.
+
         Raises:
-            ValueError: If the method is already registered.
+            NotImplementedError: Always, until this is built out.
         """
-        # This would require refactoring to use instance variables instead of 
-        # a static dictionary, but provides a blueprint for future extensibility
         raise NotImplementedError("Dynamic strategy registration not yet implemented")

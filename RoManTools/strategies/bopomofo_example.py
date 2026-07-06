@@ -1,10 +1,19 @@
 """
-Example: Bopomofo (Zhuyin) romanization strategy implementation.
+Example: what a Bopomofo (Zhuyin) strategy could look like.
 
-This is a template/example showing how to add Bopomofo support to the modular system.
-Bopomofo is fundamentally different from Latin-script romanization systems as it uses
-Chinese phonetic symbols, but this example shows how it could be integrated if needed
-for transliteration or mixed-script processing.
+This file is not wired into RoManTools - it's not registered in factory.py
+or listed in constants.supported_methods, so nothing in the package ever
+actually runs this code. It exists purely as a worked example for anyone
+who wants to add a new romanization method later (see base.py for what a
+"strategy" is, and CLAUDE.md's "Adding New Romanization Methods" section
+for the full checklist of steps - registering this file's class is one of
+them).
+
+Bopomofo (also called Zhuyin) doesn't use the Latin alphabet at all - it has
+its own set of phonetic symbols (ㄅㄆㄇㄈ, etc.). This example assumes
+someone has already spelled those symbols out using Latin letters (e.g.
+typing "b" instead of "ㄅ"), and shows how that transliterated input could
+be parsed the same way Pinyin and Wade-Giles are.
 """
 
 from typing import TYPE_CHECKING, Optional
@@ -17,20 +26,18 @@ if TYPE_CHECKING:
 
 class BopomofoStrategy(RomanizationStrategy):
     """
-    Strategy for processing Bopomofo (Zhuyin) romanization syllables.
-    
-    Bopomofo characteristics:
-    - Uses Chinese phonetic symbols (ㄅㄆㄇㄈ etc.)
-    - Different initials: ㄅ(b), ㄆ(p), ㄇ(m), ㄈ(f), etc.
-    - Different finals: ㄚ(a), ㄛ(o), ㄜ(e), ㄞ(ai), etc.
-    - Tone marks: ˊˇˋ˙ (2nd, 3rd, 4th, light tone)
-    - No apostrophes
-    - Compact syllable representation
-    
-    Note: This example assumes transliterated Bopomofo input (romanized representations
-    of the symbols) rather than actual Unicode Bopomofo characters.
+    A worked example of Bopomofo-specific parsing rules (see the module
+    docstring above - this class is not registered anywhere and never runs).
+
+    Bopomofo characteristics this example accounts for:
+    - Its own initials and finals, mapped from Latin-letter stand-ins to the
+      actual Bopomofo symbols below (e.g. "b" -> "ㄅ").
+    - Tone marks (ˊˇˋ˙) that need to be stripped out before parsing, rather
+      than the numbered tones or bare vowels other methods use.
+    - No apostrophes.
+    - A more limited set of consonant endings than Pinyin or Wade-Giles.
     """
-    
+
     # Bopomofo initials mapping (transliterated forms)
     BOPOMOFO_INITIALS = {
         'b': 'ㄅ', 'p': 'ㄆ', 'm': 'ㄇ', 'f': 'ㄈ',
@@ -40,7 +47,7 @@ class BopomofoStrategy(RomanizationStrategy):
         'zh': 'ㄓ', 'ch': 'ㄔ', 'sh': 'ㄕ', 'r': 'ㄖ',
         'z': 'ㄗ', 'c': 'ㄘ', 's': 'ㄙ'
     }
-    
+
     # Bopomofo finals mapping (transliterated forms)
     BOPOMOFO_FINALS = {
         'a': 'ㄚ', 'o': 'ㄛ', 'e': 'ㄜ', 'i': 'ㄧ', 'u': 'ㄨ', 'v': 'ㄩ',
@@ -48,24 +55,25 @@ class BopomofoStrategy(RomanizationStrategy):
         'an': 'ㄢ', 'en': 'ㄣ', 'ang': 'ㄤ', 'eng': 'ㄥ',
         'er': 'ㄦ'
     }
-    
+
     def find_initial(self, text: str, syllable: "Syllable") -> str:
         """
-        Handles the initial part extraction for Bopomofo method.
-        
+        Extract the initial, after first stripping tone marks out of the
+        way (see _remove_tone_marks below).
+
         Args:
-            text: The text from which to extract the initial.
-            syllable: The Syllable instance for accessing helper methods.
-            
+            text: The text to extract the initial from.
+            syllable: The Syllable being built, for error reporting.
+
         Returns:
-            The initial part of the syllable, or 'ø' if no initial exists.
+            The initial, or 'ø' if there isn't one.
         """
         # Bopomofo initial detection with tone mark handling
         from ..constants import vowels, apostrophes, dashes
-        
+
         # Remove tone marks first
         text_clean = self._remove_tone_marks(text)
-        
+
         for i, c in enumerate(text_clean):
             if c in vowels:
                 if i == 0:  # If a vowel is found at the beginning, return 'ø'
@@ -81,39 +89,40 @@ class BopomofoStrategy(RomanizationStrategy):
                 return self.handle_dash_in_initial(text_clean, i)
 
         return text_clean
-    
+
     def handle_apostrophe_in_initial(self, text: str, index: int) -> str:
         """
-        Bopomofo doesn't use apostrophes in initials.
-        
+        Bopomofo doesn't use apostrophes at all, so one appearing here is
+        just discarded rather than kept as part of the initial.
+
         Args:
             text: The text being processed.
-            index: The index where the apostrophe was found.
-            
+            index: Where the apostrophe was found in `text`.
+
         Returns:
-            The initial part without the apostrophe.
+            The initial, without the apostrophe.
         """
         # Bopomofo doesn't use apostrophes, so remove them
         return text[:index]
-    
+
     def find_final(self, text: str, initial: str, syllable: "Syllable") -> str:
         """
-        Handles the final part extraction for Bopomofo method.
-        
-        Bopomofo has a more compact representation and different phonetic boundaries
-        compared to other romanization systems.
-        
+        Extract the final, after stripping tone marks, by first checking a
+        list of known multi-letter finals and falling back to the same
+        vowel/consonant handling Pinyin uses (see syllable.py's
+        handle_vowel_case/handle_consonant_case) for anything not on that list.
+
         Args:
-            text: The text from which to extract the final.
-            initial: The initial part of the syllable.
-            syllable: The Syllable instance for accessing helper methods.
-            
+            text: The remaining text to extract the final from.
+            initial: The syllable's already-known initial.
+            syllable: The Syllable being built, for its shared helper methods.
+
         Returns:
-            The final part of the syllable.
+            The final.
         """
         # Handle tone markers first (Bopomofo uses specific tone marks)
         text_without_tones = self._remove_tone_marks(text)
-        
+
         # Bopomofo has specific final patterns
         for i, c in enumerate(text_without_tones):
             if c in vowels:
@@ -124,60 +133,65 @@ class BopomofoStrategy(RomanizationStrategy):
             else:
                 # Bopomofo consonant endings are more limited
                 return self._handle_bopomofo_consonant_case(text_without_tones, i, initial, syllable)
-        
+
         return text_without_tones
-    
+
     def validate_syllable(self, initial: str, final: str, syllable: "Syllable") -> bool:
         """
-        Validate a complete syllable for Bopomofo method.
-        
+        Check whether this initial+final combination is a valid Bopomofo
+        syllable, using the same validity-table lookup every method uses
+        (see SyllableProcessor.validate_final_using_array in syllable.py).
+
         Args:
-            initial: The initial part of the syllable.
-            final: The final part of the syllable.
-            syllable: The Syllable instance for accessing helper methods.
-            
+            initial: The initial to check.
+            final: The final to check.
+            syllable: The Syllable being built (kept for a consistent method
+                signature; not needed by this implementation).
+
         Returns:
-            True if the syllable is valid, False otherwise.
+            True if the combination is valid.
         """
         # Use the processor's validation method with Bopomofo-specific considerations
         if initial == '':
             return self.processor.validate_final_using_array('ø', final)
         return self.processor.validate_final_using_array(initial, final)
-    
+
     def _remove_tone_marks(self, text: str) -> str:
         """
-        Remove Bopomofo tone marks from the text.
-        
-        Bopomofo uses: ˊ(2nd tone), ˇ(3rd tone), ˋ(4th tone), ˙(light tone)
-        1st tone has no mark.
-        
+        Strip Bopomofo's tone marks out of `text` before parsing: ˊ (2nd
+        tone), ˇ (3rd tone), ˋ (4th tone), ˙ (light tone). The 1st tone has
+        no mark at all, so there's nothing to remove for it.
+
         Args:
             text: The text possibly containing tone marks.
-            
+
         Returns:
-            Text with tone marks removed.
+            `text` with any tone marks removed.
         """
         tone_marks = ['ˊ', 'ˇ', 'ˋ', '˙']
         for mark in tone_marks:
             text = text.replace(mark, '')
         return text
-    
+
     def _handle_bopomofo_vowel_case(self, text: str, i: int, initial: str, syllable: "Syllable") -> Optional[str]:
         """
-        Handle Bopomofo-specific vowel patterns.
-        
+        Try Bopomofo's known multi-letter final patterns (longest first)
+        before falling back to Pinyin's general-purpose vowel handling for
+        anything not on that list.
+
         Args:
-            text: The syllable text to be processed.
-            i: The index of the vowel in the text.
-            initial: The initial part of the syllable.
-            syllable: The Syllable instance for accessing helper methods.
-            
+            text: The text being processed.
+            i: Where the vowel was found in `text`.
+            initial: The syllable's already-known initial.
+            syllable: The Syllable being built, for its handle_vowel_case
+                fallback method.
+
         Returns:
-            The final part of the syllable or None to continue processing.
+            The final, or None to signal "keep scanning".
         """
         # Check for common Bopomofo vowel combinations
         remaining_text = text[i:]
-        
+
         # Try longer combinations first (greedy matching)
         bopomofo_finals = ['ang', 'eng', 'ong', 'ai', 'ei', 'ao', 'ou', 'an', 'en', 'er']
         for final_pattern in bopomofo_finals:
@@ -185,66 +199,70 @@ class BopomofoStrategy(RomanizationStrategy):
                 # Check if this is a valid Bopomofo combination
                 if self.processor.validate_final_using_array(initial, final_pattern, silent=True):
                     return final_pattern
-        
+
         # Fall back to single vowel
         if i + 1 == len(text):
             return text[i:]  # Single vowel at end
-        
+
         # Use standard vowel case handling for complex cases
         vowel_result = syllable.handle_vowel_case(text, i, initial)
         return vowel_result if vowel_result is not None else text[i:]
-    
+
     def _handle_bopomofo_consonant_case(self, text: str, i: int, initial: str, syllable: "Syllable") -> str:
         """
-        Handle Bopomofo-specific consonant endings.
-        
-        Bopomofo has limited consonant endings: n, ng, r
-        
+        Handle Bopomofo's small set of valid consonant endings ("n", "ng",
+        and "r" - as in the "r" ending that colors the preceding vowel,
+        called erhua/儿化音), falling back to Pinyin's general-purpose
+        consonant handling for anything else.
+
         Args:
-            text: The syllable text to be processed.
-            i: The index of the consonant in the text.
-            initial: The initial part of the syllable.
-            syllable: The Syllable instance for accessing helper methods.
-            
+            text: The text being processed.
+            i: Where the consonant was found in `text`.
+            initial: The syllable's already-known initial.
+            syllable: The Syllable being built, for its handle_consonant_case
+                fallback method.
+
         Returns:
-            The final part of the syllable.
+            The final.
         """
         remainder = len(text) - i - 1
-        
+
         # Handle "ng" ending (common in Bopomofo)
         if text[i] == 'n' and remainder > 0 and text[i + 1] == 'g':
             if self.processor.validate_final_using_array(initial, text[:i + 2], silent=True):
                 return text[:i + 2]  # Return "ng"
-        
+
         # Handle "n" ending
         if text[i] == 'n':
             if remainder == 0 or self.processor.validate_final_using_array(initial, text[:i + 1], silent=True):
                 return text[:i + 1]  # Return "n"
-        
+
         # Handle "r" ending (like 儿化音)
         if text[i] == 'r':
             if remainder == 0 or self.processor.validate_final_using_array(initial, text[:i + 1], silent=True):
                 return text[:i + 1]  # Return "r"
-        
+
         # Fall back to standard consonant handling
         return syllable.handle_consonant_case(text, i, initial)
-    
+
     def get_bopomofo_representation(self, initial: str, final: str) -> str:
         """
-        Convert romanized initial and final to Bopomofo symbols.
-        
-        This is a utility method that could be used for display or conversion purposes.
-        
+        Convert a romanized (Latin-letter) initial and final into their
+        actual Bopomofo symbols, using the two lookup dictionaries above.
+        Not used anywhere in parsing - this would only matter if someone
+        wanted to display real Bopomofo symbols rather than the
+        transliterated form.
+
         Args:
             initial: The romanized initial.
             final: The romanized final.
-            
+
         Returns:
-            The Bopomofo representation.
+            The Bopomofo symbol representation.
         """
         bopomofo_initial = self.BOPOMOFO_INITIALS.get(initial, '')
         bopomofo_final = self.BOPOMOFO_FINALS.get(final, final)
-        
+
         return bopomofo_initial + bopomofo_final
 
 
@@ -263,7 +281,7 @@ class BopomofoStrategy(RomanizationStrategy):
 #
 # __all__ = [
 #     'RomanizationStrategy',
-#     'PinyinStrategy', 
+#     'PinyinStrategy',
 #     'WadeGilesStrategy',
 #     'YaleStrategy',
 #     'BopomofoStrategy',  # Add this line
