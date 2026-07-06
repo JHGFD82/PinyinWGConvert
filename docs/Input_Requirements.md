@@ -1,32 +1,34 @@
 # Input Requirements
 
-This document outlines the requirements for successful use of the RoManTools package. Its main focus is on ensuring proper text input based on the romanization method being analyzed. These rules run parallel to the established methods of handling ambiguous tones and letter pairings.
+This document explains how to format your text so RoManTools can read it correctly, whether you're using the command line or importing the package into Python. The examples below use Python (`from RoManTools import ...`), but the same rules apply no matter how you run RoManTools - see [CLI.md](CLI.md) for the equivalent command-line syntax.
 
 ## Important Notes
 
-There is no restriction for the use of the various forms of apostrophe marks or dashes, however the output of the code will always result with the foot mark (') or the hyphen (-). These rules do not apply when using the detect_method feature, however they can be used as guidelines for how romanization methods are detected by RoManTools.
+You can type apostrophes and dashes in any of their common forms (straight quote `'`, curly quotes `’ ‘`, hyphen `-`, en dash `–`, em dash `—`, and a few others) - RoManTools accepts all of them as equivalent, and always produces the standard straight apostrophe (`'`) or hyphen (`-`) in its output. These rules don't apply to the `detect_method` action, though they're still a useful guideline for how it recognizes which romanization method your text is in.
 
 ## Pinyin Input Requirements
 
-Pinyin can be entered without use of supplementary punctuation. RoManTools is designed to detect initials and finals based on the transition from vowels to consonants ("Xiaoyu" -> `['Xiao', 'yu']`), and is also able to handle "n," "ng," and "er" finals ("Luanfeng" -> `['Luan', 'feng']`, "Yongtao" -> `['Yong', 'tao']`, "Sheer" -> `['She', 'er']`. However, in instances of tonal or spelling ambiguity it is highly recommended to split syllables with apostrophes ("Changan" -> `['Chan', 'gan']`, "Chang'an" -> `['Chang', 'an']`). Not doing so may lead to unexpected results.
+Pinyin can usually be typed without any extra punctuation. RoManTools works out where one syllable ends and the next begins mainly by watching for the switch from consonants to vowels (so "Xiaoyu" splits into `['Xiao', 'yu']`), and it also knows how to handle syllables ending in "n", "ng", or "er" (so "Luanfeng" splits into `['Luan', 'feng']`, "Yongtao" into `['Yong', 'tao']`, and "Sheer" into `['She', 'er']`).
+
+Some words are genuinely ambiguous without help, though - "changan" could be "Chan-gan" or "Chang-an", and there's no way to tell which one you mean from the letters alone. In cases like that, split the syllables yourself with an apostrophe (`Chang'an`) to get the result you actually want. Skipping this step won't cause an error, but it may silently give you the wrong split.
 
 ### Examples
 
-The code examples are written within the style of code execution within a Python console, but all rules must also be followed for command-line execution.
+The examples below show Python code, but the same input rules apply if you're using the command line instead (see [CLI.md](CLI.md)).
 
 #### changan
 
 ```python
 from RoManTools import segment_text
 
-result = segment_text("changan", "py")
+result = segment_text("changan", method="py")
 print(result)  # Output: [['chan', 'gan']]
 ```
 
 ```python
 from RoManTools import segment_text
 
-result = segment_text("chang'an", "py")
+result = segment_text("chang'an", method="py")
 print(result)  # Output: [['chang', 'an']]
 ```
 
@@ -35,48 +37,43 @@ print(result)  # Output: [['chang', 'an']]
 ```python
 from RoManTools import segment_text, syllable_count
 
-result = segment_text("xian", "py")
-print(result)  # Output: ['xian']
+result = segment_text("xian", method="py")
+print(result)  # Output: [['xian']]
 
-result = syllable_count("xian", "py")
+result = syllable_count("xian", method="py")
 print(result)  # Output: [1]
 ```
 
 ```python
 from RoManTools import segment_text, syllable_count
 
-result = segment_text("xi'an", "py")
+result = segment_text("xi'an", method="py")
 print(result)  # Output: [['xi', 'an']]
 
-result = syllable_count("xian", "py")
+result = syllable_count("xi'an", method="py")
 print(result)  # Output: [2]
 ```
 
 ## Wade-Giles Input Requirements
 
-RoManTools strongly recommends the use of hyphens (-) or dashes (–, —) to separate syllables in multi-syllable Wade-Giles words for optimal accuracy. While the system includes some automatic syllable boundary detection (particularly for handling 'erh' finals), explicit separation with hyphens is still the most reliable method for avoiding ambiguities with letters like "h", "ss", "ng", and vowel pairs.
+For Wade-Giles, RoManTools strongly recommends using a hyphen (`-`) or dash (`–`, `—`) between syllables in a multi-syllable word. RoManTools can work out some syllable boundaries on its own even without one (particularly around the "erh" final), but explicit hyphens are the most reliable way to avoid ambiguity around letters like "h", "ss", "ng", and pairs of vowels.
 
-All apostrophes are supported and will be counted as part of the syllable's initial; however, all variations of apostrophes entered will be converted to the foot mark (').
+Every form of apostrophe is understood as part of a syllable's initial (as in Wade-Giles spellings like "ch'i"), and whichever form you type, RoManTools's output will always use the standard straight apostrophe (`'`).
 
 ### Examples
 
-The code examples are written within the style of code execution within a Python console, but all rules must also be followed for command-line execution.
-
-#### ch'i-hsiao (recommended: with explicit hyphens)
-
 ```python
 from RoManTools import segment_text
 
-result = segment_text("ch'i-hsiao", "wg")
+# Recommended: with explicit hyphens
+result = segment_text("ch'i-hsiao", method="wg")
 print(result)  # Output: [["ch'i", 'hsiao']]
 ```
 
-#### Simple cases may work without hyphens
-
 ```python
 from RoManTools import segment_text
 
-# Simple cases might work, but hyphens are still recommended
-result = segment_text("ch'ihsiao", "wg")
+# Simple cases may still work without hyphens, but hyphens are still recommended
+result = segment_text("ch'ihsiao", method="wg")
 print(result)  # Output: [["ch'ih", 'siao']]
 ```
