@@ -16,7 +16,7 @@ After installing the package through pip, RoManTools can be executed from the co
 
 Upon running `RoManTools` with no arguments you will see the help message listing all supported commands.
 
-Every command takes the text to process as a **positional argument** — there is no `-i`/`--input` flag:
+Every command takes the text to process as a positional argument - meaning you just place it directly after the command name, rather than naming it with a flag first (a flag is a `-x` or `--something` marker, like `-m` below, that labels what a piece of information means). There is no `-i`/`--input` flag for the text itself:
 
 ```bash
 RoManTools <command> "text to process" [options]

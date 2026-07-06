@@ -5,7 +5,7 @@
 ![Flake8](https://img.shields.io/badge/code%20style-flake8-brightgreen)
 ![Pylint](https://img.shields.io/badge/pylint-10.0%2F10-brightgreen)
 
-This package comprises a set of tools designed to facilitate the handling of romanized Mandarin text. It is currently under active development by Jeff Heller, Digital Project Specialist for the Department of East Asian Studies at Princeton University. This is a beta release, open for testing and forking for Python 3.9+.
+RoManTools is a set of tools for working with romanized Mandarin text: converting between romanization systems, checking whether text is correctly romanized, and more. It's under active development by Jeff Heller, Digital Project Specialist for the Department of East Asian Studies at Princeton University. This is a beta release, open for testing and forking. It requires Python 3.9 or newer.
 
 ## Features Planned for Version 1.0
 
@@ -20,40 +20,46 @@ Version 1.0 of this project will include the following features:
 
 ## Prerequisites
 
-There are no prerequisites.
+There are no prerequisites - RoManTools has no other packages it depends on.
 
 ## Installation
 
 To install RoManTools, the easiest method is through pip:
 
-``pip -m install RoManTools``
+```bash
+pip install RoManTools
+```
 
 You can also download the package directly from the GitHub repository. This method is ***not recommended*** as it requires a specific execution process, detailed in the last bullet point below.
 
 ## Execution
 
-RoManTools can be executed in three ways.
+There are two main ways to use RoManTools, plus a third for running it straight from a GitHub download without installing it. Pick whichever matches how you're working:
 
-* From the command-line using the installed command:
+* From the command line, using the installed `RoManTools` command:
 
 ```bash
 RoManTools [action] "[input]" [other parameters]
 ```
 
-* From within the Python console or scripts via import:
+  Full instructions: [CLI.md](https://github.com/JHGFD82/RoManTools/blob/main/docs/CLI.md).
+
+* From within Python, by importing the package into your own script or notebook:
 
 ```python
 from RoManTools import *
 [action]([input], [other parameters])
 ```
 
-* From the command-line after downloading the package directly from GitHub:
+  Full instructions: [Python.md](https://github.com/JHGFD82/RoManTools/blob/main/docs/Python.md).
+
+* From the command line, after downloading the package directly from GitHub instead of installing it with pip:
 
 ```bash
 python -m RoManTools.main [action] "[input]" [other parameters]
 ```
 
-Documentation on command-line execution can be found in [CLI.md](https://github.com/JHGFD82/RoManTools/blob/main/docs/CLI.md), as well as execution within Python from [Python.md](https://github.com/JHGFD82/RoManTools/blob/main/docs/Python.md). Please refer to [Input_Requirements.md](https://github.com/JHGFD82/RoManTools/blob/main/docs/Input_Requirements.md) for guidelines on how text should be formatted for input, and [Methodology.md](https://github.com/JHGFD82/RoManTools/blob/main/docs/Methodology.md) will provide details on the text analysis process.
+Whichever way you use RoManTools, two more documents apply either way: [Input_Requirements.md](https://github.com/JHGFD82/RoManTools/blob/main/docs/Input_Requirements.md) explains how your text needs to be formatted for each romanization method, and [Methodology.md](https://github.com/JHGFD82/RoManTools/blob/main/docs/Methodology.md) explains, step by step, how RoManTools actually analyzes your text.
 
 ## Possible Future Goals (suggestions welcome!)
 

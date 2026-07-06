@@ -2,6 +2,10 @@
 
 This document provides an overview of the public functions available when importing the RoManTools package directly (`from RoManTools import ...`). All are re-exported from `RoManTools/actions.py` via `RoManTools/__init__.py`. All examples below were verified against the current package.
 
+## A note on performance
+
+If you call any of these functions repeatedly with the same input - for example, looping over a column of a dataset with `df['name'].apply(lambda x: convert_text(x, convert_from="py", convert_to="wg"))` - only the first call for a given input actually does the work. After that, RoManTools returns the answer from a cache (a saved copy of the previous result) instead of redoing it, so processing a large, repetitive dataset is much faster than the first call alone would suggest.
+
 ## Public Methods
 
 ### `convert_text`
