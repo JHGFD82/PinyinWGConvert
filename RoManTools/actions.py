@@ -1,39 +1,46 @@
 """
-Utilities for handling romanized Mandarin validation and conversion.
+The six things you can do with RoManTools: segment, convert, cherry-pick,
+count syllables, detect a method, and validate text.
 
-This module provides helper functions and methods used across the RoManTools package. It includes functionality for:
-- Detecting romanization patterns.
-- Validating input text.
-- Segmenting text into syllables.
-- Converting text between different romanization standards.
-- Counting syllables in text.
+Every one of these functions follows the same basic recipe: split the input
+into syllables (see chunker.py), then do something specific with the
+result. `main.py` (the command-line tool) and `RoManTools/__init__.py`
+(the `from RoManTools import ...` API) both just call the functions defined
+here - this module is where the actual work happens.
 
 Functions:
-    segment_text(text: str, method: str, config: Optional[Config] = None, **kwargs: bool) -> List[Union[List[str], str]]:
-        Segments the given text into syllables based on the selected method.
-    convert_text(text: str, convert_from: str, convert_to: str, config: Optional[Config] = None, **kwargs: bool) -> str:
-        Converts the given text from one romanization standard to another.
-    cherry_pick(text: str, convert_from: str, convert_to: str, config: Optional[Config] = None, **kwargs: bool) -> str:
-        Converts only valid romanized Mandarin words in the text from one standard to another.
-    syllable_count(text: str, method: str, config: Optional[Config] = None, **kwargs: bool) -> list[int]:
-        Returns the count of syllables for each word in the processed text.
-    detect_method(text: str, per_word: bool = False, config: Optional[Config] = None, **kwargs: bool) -> Union[List[str], List[Dict[str, List[str]]]]:
-        Detects the romanization method(s) of the given text or individual words.
-    validator(text: str, method: str, per_word: bool = False, config: Optional[Config] = None, **kwargs: bool) -> Union[bool, list[dict]]:
-        Validates the processed text or individual words based on the selected method.
+    segment_text(text, method, config=None, **kwargs): Split text into its
+        syllables.
+    convert_text(text, convert_from, convert_to, config=None, **kwargs):
+        Convert text from one romanization method to another.
+    cherry_pick(text, convert_from, convert_to, config=None, **kwargs):
+        Convert only the valid romanized Mandarin words in a mixed-language
+        text, leaving everything else untouched.
+    syllable_count(text, method, config=None, **kwargs): Count the
+        syllables in each word of the text.
+    detect_method(text, per_word=False, config=None, **kwargs): Work out
+        which romanization method(s) a piece of text could be.
+    validator(text, method, per_word=False, config=None, **kwargs): Check
+        whether text is valid for a given romanization method.
 
-Caching:
-    Every function below is backed by a module-level lru_cache keyed on its
-    arguments (including `config`, which compares equal across instances with
-    the same settings — see Config.__eq__). This means repeated calls with the
-    same text/method/config — e.g. in a loop over many rows of a dataset, or
-    the same syllable recurring throughout a large document — are only
-    processed once for the life of the process.
+Why repeated calls are fast:
+    Every function below remembers results it's already computed - a
+    technique generally called caching. If you call `convert_text("Zhongguo",
+    ...)` a thousand times in a loop (for example, once per row of a
+    spreadsheet), only the first call actually does the work; the other 999
+    get the answer back instantly from memory. This matters a lot for the
+    kind of workloads RoManTools is built for: processing a whole dataset,
+    or a document where the same words come up again and again.
 
-    Caching is bypassed (the function always runs fresh) when `config.crumbs`
-    or `config.error_report` is set, since both produce output as a side
-    effect of processing that must happen on every call, not just on a cache
-    miss.
+    The one exception: if you turn on `crumbs` (a step-by-step trace of what
+    the program is doing) or `error_report` (a report on what went wrong),
+    caching is skipped and the function runs fresh every time. Both of
+    those settings produce printed output as a side effect of doing the
+    work - if a cached answer were returned instead, that output simply
+    wouldn't happen, which would be confusing. Every other setting doesn't
+    have this problem: it's already baked into what gets cached, so using
+    different settings just gives you separate, independently-cached
+    answers rather than needing to skip the cache altogether.
 
 Usage Example:
     >>> from RoManTools import segment_text, convert_text, cherry_pick, syllable_count, detect_method, validator
@@ -65,14 +72,13 @@ __all__ = ['segment_text', 'convert_text', 'cherry_pick', 'syllable_count', 'det
 
 def _should_bypass_cache(config: Config) -> bool:
     """
-    Whether a call should skip the cache and run fresh.
-
-    Only settings that produce output as a side effect of processing
-    (breadcrumb traces, error-report logging) need to bypass caching — a cache
-    hit would otherwise silently swallow that output. `error_skip` and similar
-    purely-behavioral settings don't need this: they're already part of the
-    Config value used as the cache key, so different settings simply produce
-    different (correctly separate) cache entries.
+    Whether a call should skip the cache and run fresh - see "Why repeated
+    calls are fast" in this module's docstring for the full explanation.
+    Only `crumbs` and `error_report` need this: both print output as a side
+    effect of running, which a cache hit would silently skip. Every other
+    setting (like `error_skip`) is already part of what gets cached, so
+    different settings simply get their own separate cache entries instead
+    of needing to bypass caching entirely.
     """
     return config.crumbs or config.error_report
 
@@ -88,16 +94,18 @@ _cached_process_text = lru_cache(maxsize=1000000)(_process_text_impl)
 
 def _process_text(text: str, method: str, config: Config) -> Sequence[Union[Sequence[Syllable], Syllable, str]]:
     """
-    Processes the given text using the specified method and configuration.
+    Run the shared first step behind every action: split `text` into
+    chunks and parse each word-chunk into Syllable objects (see
+    chunker.TextChunkProcessor).
 
     Args:
-        text (str): The text to be processed.
-        method (str): The method to apply for text processing.
-        config (Config): The configuration object containing processing settings.
+        text (str): The text to process.
+        method (str): Which romanization method to use.
+        config (Config): The settings for this run.
 
     Returns:
-        Sequence[Union[Sequence[Syllable], Syllable, str]]: A sequence of processed text chunks,
-        which could be individual syllables, sequences of syllables, or strings.
+        The processed chunks - see TextChunkProcessor.get_chunks in
+        chunker.py for exactly what this looks like.
     """
     # TextChunkProcessor prints breadcrumb traces as a side effect of parsing;
     # a cache hit would silently skip that output, so bypass the cache here
@@ -129,17 +137,20 @@ _cached_segment_text = lru_cache(maxsize=1000000)(_segment_text_impl)
 
 def segment_text(text: str, method: str, config: Optional[Config] = None, **kwargs: bool) -> List[Union[List[str], str]]:
     """
-    Segments the given text into syllables based on the selected romanization method.
+    Split text into its syllables.
 
     Args:
-        text (str): The text to be segmented.
-        method (str): The romanization method to use for segmentation.
-        config (Config, optional): Configuration object for processing settings. Defaults to None.
-        **kwargs: Additional keyword arguments to initialize the Config object if not provided.
+        text (str): The text to segment.
+        method (str): Which romanization method the text is in.
+        config (Config, optional): The settings for this run. If not
+            given, one is built from **kwargs.
+        **kwargs: Settings to build a Config from, if you didn't pass one
+            directly (see config.py's Config for the available settings).
 
     Returns:
-        List[Union[List[str], str]]: A list where each element is either a list of syllable strings (for words)
-            or a string (for non-text elements).
+        A list where each entry is either a list of syllable strings (one
+        entry per word) or a plain string (a stretch of non-text content,
+        like punctuation, left as-is).
 
     Example:
         >>> segment_text("Zhongguo ti'an tianqi", method="py")
@@ -155,14 +166,19 @@ def segment_text(text: str, method: str, config: Optional[Config] = None, **kwar
 # Conversion actions
 def _conversion_processing(text: str, convert: Dict[str, str], config: Config, stopwords: Set[str], include_spaces: bool) -> str:
     """
-    Converts the given text from one romanization standard to another.
+    Shared logic behind convert_text() and cherry_pick(): parse the text,
+    convert each word, and join the results back into one string.
 
     Args:
-        text (str): The text to be converted.
-        convert (Dict[str, str]): Dictionary with 'from' and 'to' keys specifying conversion standards.
-        config (Config): Configuration object for processing settings.
-        stopwords (Set[str]): Set of stopwords to exclude from conversion.
-        include_spaces (bool): Whether to include spaces between converted words.
+        text (str): The text to convert.
+        convert (Dict[str, str]): The romanization methods to convert
+            between, as `{"from": ..., "to": ...}`.
+        config (Config): The settings for this run.
+        stopwords (Set[str]): Words to leave unconverted (e.g. "China").
+        include_spaces (bool): Whether to rejoin words with spaces
+            (convert_text) or run them back together with no separator
+            (cherry_pick, which needs to preserve the original spacing
+            found in the text itself rather than adding its own).
 
     Returns:
         str: The converted text.
@@ -199,14 +215,16 @@ _cached_convert_text = lru_cache(maxsize=1000000)(_convert_text_impl)
 
 def convert_text(text: str, convert_from: str, convert_to: str, config: Optional[Config] = None, **kwargs: bool) -> str:
     """
-    Converts the given text from one romanization standard to another.
+    Convert text from one romanization method to another.
 
     Args:
-        text (str): The text to be converted.
-        convert_from (str): The romanization standard to convert from.
-        convert_to (str): The romanization standard to convert to.
-        config (Config, optional): Configuration object for processing settings. Defaults to None.
-        **kwargs: Additional keyword arguments to initialize the Config object if not provided.
+        text (str): The text to convert.
+        convert_from (str): The romanization method to convert from.
+        convert_to (str): The romanization method to convert to.
+        config (Config, optional): The settings for this run. If not
+            given, one is built from **kwargs.
+        **kwargs: Settings to build a Config from, if you didn't pass one
+            directly.
 
     Returns:
         str: The converted text.
@@ -233,18 +251,24 @@ _cached_cherry_pick = lru_cache(maxsize=1000000)(_cherry_pick_impl)
 
 def cherry_pick(text: str, convert_from: str, convert_to: str, config: Optional[Config] = None, **kwargs: bool) -> str:
     """
-    Converts only valid romanized Mandarin words in the text from one standard to another.
-    Non-romanized words are left unchanged.
+    Convert only the valid romanized Mandarin words in a mixed-language
+    text, leaving English words, punctuation, and spacing untouched. Handy
+    for converting Mandarin names embedded in an otherwise-English sentence
+    or document, without needing to pull them out first.
 
     Args:
-        text (str): The text to be processed.
-        convert_from (str): The romanization standard to convert from.
-        convert_to (str): The romanization standard to convert to.
-        config (Config, optional): Configuration object for processing settings. Defaults to None.
-        **kwargs: Additional keyword arguments to initialize the Config object if not provided.
+        text (str): The text to process.
+        convert_from (str): The romanization method to convert from.
+        convert_to (str): The romanization method to convert to.
+        config (Config, optional): The settings for this run. If not
+            given, one is built from **kwargs (with error_skip already
+            turned on - see below).
+        **kwargs: Settings to build a Config from, if you didn't pass one
+            directly.
 
     Returns:
-        str: The text with valid romanized Mandarin words converted.
+        str: The text, with valid romanized Mandarin words converted and
+        everything else left as it was.
 
     Example:
         >>> cherry_pick("This is Zhongguo.", convert_from="py", convert_to="wg")
@@ -271,16 +295,18 @@ _cached_syllable_count = lru_cache(maxsize=1000000)(_syllable_count_impl)
 
 def syllable_count(text: str, method: str, config: Optional[Config] = None, **kwargs: bool) -> List[int]:
     """
-    Returns the count of syllables for each word in the processed text.
+    Count the syllables in each word of the text.
 
     Args:
-        text (str): The text to be analyzed.
-        method (str): The romanization method for the supplied text.
-        config (Config, optional): Configuration object for processing settings. Defaults to None.
-        **kwargs: Additional keyword arguments to initialize the Config object if not provided.
+        text (str): The text to analyze.
+        method (str): Which romanization method the text is in.
+        config (Config, optional): The settings for this run. If not
+            given, one is built from **kwargs.
+        **kwargs: Settings to build a Config from, if you didn't pass one
+            directly.
 
     Returns:
-        list[int]: A list of syllable counts for each valid word in the text.
+        list[int]: The syllable count for each word in the text, in order.
 
     Example:
         >>> syllable_count("Zhongguo", method="py")
@@ -296,15 +322,19 @@ def syllable_count(text: str, method: str, config: Optional[Config] = None, **kw
 # Detection and validation actions
 def _detect_for_chunk(chunk: str, config: Config, crumbs: bool = False) -> List[str]:
     """
-    Detects the valid processing methods for a given chunk of romanized Mandarin text.
+    Work out which romanization method(s) `chunk` could validly be, by
+    trying each supported method in turn and checking whether every
+    syllable in the chunk parses as valid under it.
 
     Args:
-        chunk (str): A segment of romanized Mandarin text to be analyzed.
-        config (Config): The configuration object containing processing settings.
-        crumbs (bool, optional): Whether to include intermediate outputs (crumbs) during processing. Defaults to False.
+        chunk (str): The text to check (the whole input, or a single word,
+            depending on whether detect_method was called with per_word).
+        config (Config): The settings for this run.
+        crumbs (bool, optional): Whether to print a summary breadcrumb
+            after checking. Defaults to False.
 
     Returns:
-        List[str]: A list of methods that are valid for processing the given chunk.
+        List[str]: The romanization methods this chunk is valid for.
     """
     result: List[str] = []
     for method in method_shorthand_to_full.keys():
@@ -340,18 +370,25 @@ _cached_detect_method = lru_cache(maxsize=1000000)(_detect_method_impl)
 
 def detect_method(text: str, per_word: bool = False, config: Optional[Config] = None, **kwargs: bool) -> Union[List[str], List[Dict[str, Union[str, List[str]]]]]:
     """
-    Detects the romanization method(s) of the given text or of each word.
+    Work out which romanization method(s) a piece of text could be. Some
+    text is ambiguous - for example, a word that's a valid syllable in both
+    Pinyin and Wade-Giles - so the result is always a list, even when there
+    turns out to be only one possible answer.
 
     Args:
-        text (str): The text to be analyzed.
-        per_word (bool, optional): If True, returns methods for each word separately. Defaults to False.
-        config (Config, optional): Configuration object for processing settings. Defaults to None.
-        **kwargs: Additional keyword arguments to initialize the Config object if not provided.
+        text (str): The text to analyze.
+        per_word (bool, optional): If True, check each word separately
+            instead of requiring the whole text to agree on one method.
+            Defaults to False.
+        config (Config, optional): The settings for this run. If not
+            given, one is built from **kwargs.
+        **kwargs: Settings to build a Config from, if you didn't pass one
+            directly.
 
     Returns:
-        Union[List[str], List[Dict[str, Union[str, List[str]]]]]:
-            If per_word is False, returns a list of valid methods for the entire text.
-            If per_word is True, returns a list of dicts with 'word' and 'methods' keys for each word.
+        If per_word is False: a list of the romanization methods valid for
+        the whole text. If per_word is True: a list of dicts, each with a
+        'word' and its own 'methods' list.
 
     Example:
         >>> detect_method("Zhongguo")
@@ -392,19 +429,23 @@ _cached_validator = lru_cache(maxsize=1000000)(_validator_impl)
 
 def validator(text: str, method: str, per_word: bool = False, config: Optional[Config] = None, **kwargs: bool) -> Union[bool, List[Dict[str, Union[str, List[str], List[bool]]]]]:
     """
-    Validates the processed text or individual words based on the selected romanization method.
+    Check whether text is valid for a given romanization method.
 
     Args:
-        text (str): The text to be validated.
-        method (str): The romanization method to use for validation.
-        per_word (bool, optional): If True, returns validation for each word separately. Defaults to False.
-        config (Config, optional): Configuration object for processing settings. Defaults to None.
-        **kwargs: Additional keyword arguments to initialize the Config object if not provided.
+        text (str): The text to validate.
+        method (str): Which romanization method to validate against.
+        per_word (bool, optional): If True, check and report each word
+            separately instead of returning one overall answer. Defaults
+            to False.
+        config (Config, optional): The settings for this run. If not
+            given, one is built from **kwargs.
+        **kwargs: Settings to build a Config from, if you didn't pass one
+            directly.
 
     Returns:
-        Union[bool, list[dict[str, Union[str, list[str], list[bool]]]]]:
-            If per_word is False, returns True if all syllables are valid, else False.
-            If per_word is True, returns a list of dicts with 'word', 'syllables', and 'valid' keys for each word.
+        If per_word is False: True if every syllable in the text is valid,
+        False otherwise. If per_word is True: a list of dicts, each with a
+        word, its syllables, and which of those syllables are valid.
 
     Example:
         >>> validator("Zhongguo", method="py")
