@@ -37,7 +37,7 @@ RoManTools can be executed in three ways.
 * From the command-line using the installed command:
 
 ```bash
-RoManTools [action] -i [input] [other parameters]
+RoManTools [action] "[input]" [other parameters]
 ```
 
 * From within the Python console or scripts via import:
@@ -50,7 +50,7 @@ from RoManTools import *
 * From the command-line after downloading the package directly from GitHub:
 
 ```bash
-python -m RoManTools.main [action] -i [input] [other parameters]
+python -m RoManTools.main [action] "[input]" [other parameters]
 ```
 
 Documentation on command-line execution can be found in [CLI.md](https://github.com/JHGFD82/RoManTools/blob/main/docs/CLI.md), as well as execution within Python from [Python.md](https://github.com/JHGFD82/RoManTools/blob/main/docs/Python.md). Please refer to [Input_Requirements.md](https://github.com/JHGFD82/RoManTools/blob/main/docs/Input_Requirements.md) for guidelines on how text should be formatted for input, and [Methodology.md](https://github.com/JHGFD82/RoManTools/blob/main/docs/Methodology.md) will provide details on the text analysis process.

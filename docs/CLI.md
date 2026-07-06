@@ -6,168 +6,215 @@
 2. [Commands](#2-commands)
 3. [Required Arguments](#3-required-arguments)
 4. [Optional Parameters for Additional Features](#4-optional-parameters-for-additional-features)
-5. [Optional Parameters for Debugging Purposes](#5-optional-parameters-for-debugging-purposes)
+5. [Optional Parameters for Debugging Purposes](#5-optional-parameters-for-debugging-and-error-reporting)
 6. [Examples](#examples)
 7. [Common Errors and Troubleshooting](#common-errors-and-troubleshooting)
 
 ## 1. Initial Execution Instruction
 
-After installing the package through pip or conda, RoManTools can be executed from the command line by typing `RoManTools` in your terminal or Jupyter Notebooks. Please note that use of capital letters in package names is unconventional—the vast majority of Python packages are written in lowercase.
+After installing the package through pip, RoManTools can be executed from the command line by typing `RoManTools` in your terminal or Jupyter Notebooks. Please note that use of capital letters in package names is unconventional—the vast majority of Python packages are written in lowercase.
 
-Upon running `RoManTools` you will receive an error. This is because required arguments are not being supplied. However, all supported arguments will be listed.
+Upon running `RoManTools` with no arguments you will see the help message listing all supported commands.
+
+Every command takes the text to process as a **positional argument** — there is no `-i`/`--input` flag:
+
+```bash
+RoManTools <command> "text to process" [options]
+```
 
 ## 2. Commands
 
-`convert`: Support for converting between Pinyin and Wade-Giles (with Yale and additional standards to be added in future versions).
+`convert`: Converts text between Pinyin and Wade-Giles.
 
-`cherry_pick`: Converts only identified romanized Chinese terms, excluding any English words or those in a stopword list.
+`cherry-pick`: Converts only identified romanized Chinese terms, excluding any English words or those in the stopword list. Non-romanized words are left unchanged in the output.
 
-`segment`: Segments text into meaningful chunks, a feature that will be utilized by other actions and also available for direct use by the user.
+`segment`: Segments text into syllables, a feature that will be utilized by other actions and is also available for direct use.
 
-`syllable_count`: Counts the number of syllables per word and provides a report to the user.
+`syllable-count`: Counts the number of syllables per word and returns the counts as a list.
 
-`detect_method`: Identifies the romanization standard used in the input text and returns the detected standard(s) to the user as either a single standard or a list of multiple standards.
+`detect-method`: Identifies the romanization method(s) used in the input text.
 
-`validator`: Basic validation of supplied text.
+`validator`: Validates whether supplied text conforms to a given romanization method.
+
+Run `RoManTools --list-methods` to print the currently supported romanization methods, or `RoManTools --version` for the installed package version.
 
 ## 3. Required Arguments
 
 ### Note: "methods" refers to currently supported Mandarin romanization methods:
 
 - Pinyin (entered as `py` or `pinyin`)
-- Wade-Giles (entered as `wg` or `wage-giles`)
+- Wade-Giles (entered as `wg` or `wade-giles`)
 
-`-i / --input`: The text to be analyzed/converted.
+`text`: Positional argument — the text to be analyzed/converted. Always the first argument after the command name.
 
-`-m / --method`: The romanization method of the supplied text.
+`-m / --method`: The romanization method of the supplied text. Required for `segment`, `syllable-count`, and `validator`.
 
-`-f / --convert_from`: The originating romanization method to be analyzed.
+`-f / --from`: The originating romanization method to convert from. Required for `convert` and `cherry-pick`.
 
-`-t / --convert_to`: The method to which the text is being converted.
+`-t / --to`: The romanization method to convert to. Required for `convert` and `cherry-pick`.
 
 ## 4. Optional Parameters for Additional Features
 
-`-w / --per_word`: For supported actions, return results of analysis on a per-word basis. Performing an action without this parameter will result in a single response.
+`-w / --per-word`: For `detect-method` and `validator`, return results on a per-word basis instead of a single result for the whole input.
 
 ## 5. Optional Parameters for Debugging and Error Reporting
 
 `-C / --crumbs`: Reports a breadcrumb trail from the analysis process, showing step-by-step processing details.
 
-`-S / --error_skip`: Skip errors instead of aborting. Useful for processing text that may contain invalid romanization.
+`-S / --error_skip`: Skip errors instead of aborting. Used automatically by `cherry-pick`.
 
-`-R / --error_report`: **Primary flag** - Enable error reporting. When enabled, validation errors will be included in the output. This is the master switch that must be set for any error reporting to occur.
+`-R / --error_report`: Enable error reporting. **Currently only affects `convert` and `cherry-pick`** — it has no effect on `segment`, `syllable-count`, `detect-method`, or `validator`, which don't consult this flag.
 
-### Error Reporting Options (require `-R`)
+### Error Reporting Options (require `-R`, and only apply to `convert`/`cherry-pick`)
 
-The following options configure error reporting behavior and are only meaningful when `--error_report` (`-R`) is enabled:
+`--error_compact`: Report errors as a one-line error count (e.g. `2 errors`) instead of a detailed multi-line report. **Requires `-R`**.
 
-`--error_compact`: Use compact one-line error format instead of detailed format. Suitable for tables and scripts. **Requires `-R`**.
+`--error_max N`: Maximum number of errors to include in a **detailed** (non-compact) report. `0` means all errors (default). Has no effect when `--error_compact` is set. **Requires `-R`**.
 
-`--error_max N`: Maximum number of errors to report. `0` means all errors (default), `1` means first error only, etc. **Requires `-R`**.
-
-**Note**: Attempting to use `--error_compact` or `--error_max` without enabling `-R` will result in an error message: "error: --error_compact and --error_max require --error_report (-R) to be enabled"
+**Note**: Using `--error_compact` or `--error_max` without `-R` will produce: `error: --error_compact and --error_max require --error_report (-R) to be enabled`
 
 ### Error Reporting Examples
 
 ```bash
-# Enable error reporting with default detailed format
-RoManTools validator "xyz" -m py -R
+# Enable error reporting with default detailed format (convert/cherry-pick only)
+RoManTools convert "xyz" -f py -t wg -R
 
-# Enable error reporting with compact format
-RoManTools validator "xyz" -m py -R --error_compact
+# Enable error reporting with compact (count-only) format
+RoManTools convert "xyz" -f py -t wg -R --error_compact
 
-# Limit to first error only
-RoManTools validator "xyz" -m py -R --error_max 1
-
-# Compact format with error limit
-RoManTools validator "xyz" -m py -R --error_compact --error_max 1
+# Limit a detailed report to the first error only
+RoManTools convert "xyz" -f py -t wg -R --error_max 1
 
 # INVALID: error_compact without -R (will fail)
-RoManTools validator "xyz" -m py --error_compact
+RoManTools convert "xyz" -f py -t wg --error_compact
 # Error: --error_compact and --error_max require --error_report (-R)
 ```
 
-
 ## Examples
+
+All examples below were run against the current CLI and show verified output.
 
 ### Convert
 
-- `RoManTools convert --input "Bai Juyi" --convert_from py --convert_to wg`
-  - Output: `Pai Chüi`
+```bash
+RoManTools convert "Bai Juyi" -f py -t wg
+```
+Output: `Pai Chü-i`
 
 ### Cherry Pick
 
-- `RoManTools cherry_pick -i "This is a biography of Bai Juyi." -f py -t wg`
-  - Output: `This is the biography of Pai Chüi.`
+```bash
+RoManTools cherry-pick "This is a biography of Bai Juyi." -f py -t wg
+```
+Output: `This is a biography of Pai Chü-i.`
 
 ### Segment
 
-- `RoManTools segment -i "Bai Juyi" -m py`
-  - Output: `['Bai', ['Ju', 'yi']]`
+```bash
+RoManTools segment "Bai Juyi" -m py
+```
+Output: `[['bai'], ['ju', 'yi']]`
+
+Each word becomes a list of its syllables; non-text characters (spaces, punctuation) pass through as their own string entries.
 
 ### Syllable Count
 
-- `RoManTools syllable_count -i "Bai Juyi" -m py`
-  - Output: `[1, 2]`
+```bash
+RoManTools syllable-count "Bai Juyi" -m py
+```
+Output: `[1, 2]`
 
 ### Detect Method
 
-- `RoManTools detect_method -i "Bai Juyi"`
-  - Output: `py`
-- `RoManTools detect_method -i "Bai Juyi" --per_word`
-  - Output: `[{'word': 'Bai', 'methods': ['py']}, {'word': 'Juyi', 'methods': ['py', 'wg']}]`
+```bash
+RoManTools detect-method "Bai Juyi"
+```
+Output: `['py']`
+
+```bash
+RoManTools detect-method "Bai Juyi" --per-word
+```
+Output: `[{'word': 'Bai', 'methods': ['py']}, {'word': 'Juyi', 'methods': ['py', 'wg']}]`
 
 ### Validator
 
-- `RoManTools validator -i "Bai Julyi" -m py`
-  - Output: `False`
-- `RoManTools validator -i "Bai Julyi" -m py --per_word`
-  - Output: `[{'word': 'bai', 'syllables': ['bai'], 'valid': [True]}, {'word': 'julyi', 'syllables': ['ju', 'lyi'], 'valid': [True, False]}]`
-- `RoManTools validator -i "xyz" -m py -R`
-  - Output: `False` (with detailed error report showing invalid initial and final)
-- `RoManTools validator -i "xyz" -m py -R --error_compact`
-  - Output: `False` (with compact one-line error format)
+```bash
+RoManTools validator "Bai Julyi" -m py
+```
+Output: `False`
 
-### Error Reporting with Validator
+```bash
+RoManTools validator "Bai Julyi" -m py --per-word
+```
+Output: `[{'word': 'bai', 'syllables': ['bai'], 'valid': [True]}, {'word': 'julyi', 'syllables': ['ju', 'lyi'], 'valid': [True, False]}]`
 
-- `RoManTools validator -i "zh'ng" -m py -R`
-  - Output: `False` with detailed error report:
-    ```
-    === Error Summary ===
-      illegal_character: 1
-      invalid_final: 1
-      Total: 2
-    
-    === Detailed Errors ===
-    1. [illegal_character] Illegal character: "'" - apostrophes are not valid in Pinyin
-    2. [invalid_final] Invalid final: 'zh'
-    ```
-- `RoManTools validator -i "zh'ng" -m py -R --error_compact`
-  - Output: `False` with compact format:
-    ```
-    ERROR - illegal_character - "'"; ERROR - invalid_final - "zh"
-    ```
+Note: `-R`/`--error_report` has no effect on `validator` output (see the note in section 5) — use `convert` or `cherry-pick` with `-R` if you need a structured error report, or the `RoManTools.table_utils` helpers for programmatic validation with error detail.
+
+### Error Reporting with Convert
+
+```bash
+RoManTools convert "zh'ng" -f py -t wg -R
+```
+Output:
+```
+WARNING: # Errors in word: 'zh'ng':
+=== Detailed Errors ===
+1. [invalid_final] Invalid final: '' (final='', initial='zh')
+2. [illegal_character] Illegal character: ''' - apostrophes not used in Pinyin syllables (character=''', reason='apostrophes not used in Pinyin syllables')
+3. [invalid_initial] Invalid initial: 'ng' (initial='ng')
+4. [invalid_final] Invalid final: '' (final='', initial='ng')
+zh(!)-ng(!)
+```
+
+```bash
+RoManTools convert "zh'ng" -f py -t wg -R --error_compact
+```
+Output:
+```
+WARNING: # Errors in word: 'zh'ng': 4 errors
+zh(!)-ng(!)
+```
 
 ### Debugging Example with Crumbs
 
-- `RoManTools validator -i "Bai Julyi" -m py -wC`
-  - Output:
-    ```
-    ### Analyzing Bai Julyi ###
-    # Processing Bai
-    # Initial: B
-    # Final: ai
-    # Valid: True
-    ```
+```bash
+RoManTools validator "Bai Julyi" -m py -wC
+```
+Output (abridged):
+```
+ INFO: # Start: 2026-07-06 09:15:07
+ INFO: # Performing action: Validator
+ INFO: # Configuration: Print Crumbs
+ INFO: ---
+ INFO: # Analyzing text as Pinyin: Bai
+ INFO: ## initial found: b
+ INFO: ## final found: ai
+ INFO: ### Syllable: "bai" valid: True
+ INFO: # Word Validation: "bai" is valid
+ INFO: ---
+ INFO: # Analyzing text as Pinyin: Julyi
+ INFO: ## initial found: j
+ INFO: ## final found: u
+ INFO: ### Syllable: "ju" valid: True
+ INFO: ## initial found: ly
+ INFO: ## final found: i
+ERROR: ### Validation: invalid initial: 'ly'
+ERROR: ### Syllable: "lyi" valid: False
+ INFO: # Word Validation: "julyi" is invalid
+ INFO: ---
+ INFO: # End: 2026-07-06 09:15:07
+[{'word': 'bai', 'syllables': ['bai'], 'valid': [True]}, {'word': 'julyi', 'syllables': ['ju', 'lyi'], 'valid': [True, False]}]
+```
 
 ## Common Errors and Troubleshooting
 
-- **Error**: `No command supplied`
-  - **Solution**: Ensure you are providing a valid command after `RoManTools`.
-- **Error**: `Invalid method`
-  - **Solution**: Check that the romanization method provided is one of the supported methods (`py`, `pinyin`, `wg`, `wade-giles`).
+- **Error**: `the following arguments are required: -m/--method` (or `-f/--from`, `-t/--to`)
+  - **Solution**: Make sure you've supplied the required arguments for the command you're running (see [section 3](#3-required-arguments)).
+- **Error**: `unrecognized arguments: -i ...`
+  - **Solution**: There is no `-i`/`--input` flag. Pass the text as a plain positional argument: `RoManTools segment "text" -m py`.
+- **Error**: `Invalid romanization method: ...`
+  - **Solution**: Check that the romanization method provided is one of the supported methods (`py`, `pinyin`, `wg`, `wade-giles`), or run `RoManTools --list-methods`.
 - **Error**: `--error_compact and --error_max require --error_report (-R) to be enabled`
-  - **Solution**: You must enable error reporting with `-R` before using formatting options. For example, use `RoManTools validator "text" -m py -R --error_compact` instead of `RoManTools validator "text" -m py --error_compact`.
-- **Note**: Error reporting options (`--error_compact`, `--error_max`) are secondary flags that only work when the primary flag `-R` is set. This hierarchical structure ensures that formatting options are only used when error reporting is actually enabled.
+  - **Solution**: Add `-R` before using `--error_compact`/`--error_max`, e.g. `RoManTools convert "text" -f py -t wg -R --error_compact`.
 
 For further assistance, refer to the official documentation or contact main developer Jeff Heller via [Github issues](https://github.com/JHGFD82/RoManTools/issues) or via [e-mail](mailto:jh43@princeton.edu).

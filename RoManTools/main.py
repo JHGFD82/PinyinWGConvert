@@ -14,7 +14,7 @@ Functions:
         Parses command-line arguments and dispatches the appropriate processing action.
 
 Usage Example:
-    $ romantools segment -i "Zhongguo ti'an tianqi" -m py
+    $ romantools segment "Zhongguo ti'an tianqi" -m py
     [['zhong', 'guo'], ['ti', 'an'], ['tian', 'qi']]
 """
 
