@@ -1,14 +1,17 @@
 """
-Configuration settings for romanized Mandarin text processing.
+Settings that control how RoManTools processes text.
 
-This module provides the `Config` class, which is used to manage various configuration options for text processing,
-including:
-- Including intermediate outputs (crumbs) during processing.
-- Skipping error reporting on invalid characters.
-- Reporting errors encountered during processing.
+Every action in RoManTools (segment, convert, validate, and so on) takes an
+optional `Config` object that turns on extra behavior: a step-by-step trace
+of what the program is doing (`crumbs`), tolerance for text that doesn't
+fully match a romanization method (`error_skip`), and detailed reporting on
+what went wrong when text is invalid (`error_report` and its two related
+settings). If you don't pass a `Config`, every action uses the defaults
+(everything off), which is what most users want most of the time.
 
 Classes:
-    Config: Manages configuration settings for text processing.
+    Config: Holds the settings described above and knows how to print a
+        breadcrumb trace when `crumbs` is turned on.
 """
 
 import logging
@@ -18,8 +21,12 @@ from typing import Union, Dict, Any, Optional, Tuple
 
 class Config:
     """
-    Configuration settings for processing text. Options are ancillary to the main processing functions except
-    error_skip which is essential for methods where non-romanized Mandarin characters are maintained in output.
+    Holds the optional settings for a single RoManTools action.
+
+    Most of these settings are just about how much output you see -
+    `error_skip` is the one exception, since it's required whenever your
+    input text mixes romanized Mandarin with other text (English words,
+    punctuation, etc.) that shouldn't be treated as invalid romanization.
     """
 
     def __init__(
@@ -31,14 +38,24 @@ class Config:
         error_report_max: int = 0
     ):
         """
-        Initializes instances of the Config class.
+        Create a Config with the given settings (all off by default).
 
         Args:
-            crumbs (bool): If True, includes intermediate outputs (crumbs) during processing.
-            error_skip (bool): If True, skips error reporting on invalid characters.
-            error_report (bool): If True, reports errors encountered during processing.
-            error_report_compact (bool): If True, generates compact one-line reports. If False, generates detailed error reports.
-            error_report_max (int): Maximum number of errors to include in reports. 0 means all errors. Only first N errors will be shown.
+            crumbs (bool): If True, prints a step-by-step trace of how the
+                text is being analyzed - useful when you want to see why a
+                particular word was judged valid or invalid.
+            error_skip (bool): If True, text that doesn't match the
+                romanization method is passed through unchanged instead of
+                stopping the whole action. Turn this on whenever your input
+                is a mix of romanized Mandarin and other text.
+            error_report (bool): If True, prints a report describing what,
+                specifically, was wrong with any invalid text encountered.
+            error_report_compact (bool): If True, that report is a short
+                one-line error count. If False, it's a detailed multi-line
+                breakdown. Only matters when error_report is True.
+            error_report_max (int): For the detailed report, the most
+                errors to list before saying "...and N more". 0 means show
+                every error found.
         """
 
         self.crumbs = crumbs
@@ -54,11 +71,15 @@ class Config:
         return (self.crumbs, self.error_skip, self.error_report, self.error_report_compact, self.error_report_max)
 
     def __eq__(self, other: object) -> bool:
-        """Two Configs with the same settings are equal, regardless of identity.
+        """
+        Two Configs with the same settings are treated as equal, even if
+        they're two separate objects in memory.
 
-        This makes Config usable as an lru_cache key across separate calls that
-        build equivalent-but-distinct Config instances (the common case, since
-        callers typically don't reuse one Config object across calls).
+        This matters because several functions elsewhere in the package
+        remember ("cache") results they've already computed, keyed on their
+        inputs - including the Config used. Without this, two Config(...)
+        calls with identical settings would look like different inputs, and
+        RoManTools would end up redoing work it had already done.
         """
         if not isinstance(other, Config):
             return NotImplemented
@@ -70,29 +91,34 @@ class Config:
     @staticmethod
     def from_args(args: Union[argparse.Namespace, Dict[str, Any]]) -> "Config":
         """
-        Create a Config instance from argparse.Namespace or a dictionary.
-        
-        This factory method simplifies Config creation by automatically extracting
-        the relevant attributes from CLI arguments or a dictionary.
-        
+        Build a Config from parsed command-line arguments or a plain dict.
+
+        `args` is normally an `argparse.Namespace` - the object Python's
+        built-in `argparse` library produces after reading the command line
+        (the CLI entry point in main.py creates one of these when you run
+        `RoManTools ...`). This method reads the relevant fields off of it
+        and builds a matching Config, so the rest of the package never has
+        to know or care whether a setting came from the command line or was
+        set directly in Python code.
+
         Args:
-            args: Either an argparse.Namespace from CLI parsing or a dict with config parameters.
-                  Expected attributes/keys:
-                  - crumbs (bool): Include step-by-step analysis
-                  - error_skip (bool): Skip errors instead of aborting
-                  - error_report (bool): Enable error reporting
-                  - error_compact (bool): Use compact error format
-                  - error_max (int): Maximum number of errors to report
-        
+            args: Either an argparse.Namespace from CLI parsing, or a dict
+                  with the same keys. Recognized keys:
+                  - crumbs (bool)
+                  - error_skip (bool)
+                  - error_report (bool)
+                  - error_compact (bool)
+                  - error_max (int)
+
         Returns:
             Config: A new Config instance with values from args.
-        
+
         Examples:
             >>> # From argparse.Namespace
-            >>> args = argparse.Namespace(crumbs=True, error_skip=False, error_report=True, 
+            >>> args = argparse.Namespace(crumbs=True, error_skip=False, error_report=True,
             ...                           error_compact=False, error_max=0)
             >>> config = Config.from_args(args)
-            
+
             >>> # From dictionary
             >>> config = Config.from_args({'crumbs': True, 'error_report': True})
         """
@@ -117,14 +143,22 @@ class Config:
 
     def print_crumb(self, level: int = 0, stage: str = '', message: str = '', footer: bool = False, log_level: int = logging.INFO):
         """
-        Prints a crumb message based on the configuration settings using logging.
+        Print one line of the step-by-step trace, if `crumbs` is turned on.
+
+        If `crumbs` is False, this method does nothing - it's safe to call
+        everywhere in the codebase without checking the setting first.
 
         Args:
-            level (int): The number of '#' symbols to prefix the crumb (0 for none).
-            stage (str): The stage or action of processing (e.g., 'Segmentation', 'Converted text').
-            message (str): The main message or detail to display after the stage.
-            footer (bool): If True, adds a '---' line as a crumb footer.
-            log_level (int): The logging level to use (logging.INFO, logging.ERROR, etc.). Defaults to logging.INFO.
+            level (int): How deeply nested this line is, shown as that many
+                '#' characters before the message (0 for none). Deeper
+                levels represent more detailed sub-steps of an outer step.
+            stage (str): A short label for what's happening (e.g.
+                'Segmentation', 'Converted text').
+            message (str): The detail to show after the label.
+            footer (bool): If True, also prints a '---' separator line
+                after the message, to mark the end of a section.
+            log_level (int): Which logging severity to print at
+                (logging.INFO, logging.ERROR, etc.) - defaults to INFO.
 
         Example:
             config = Config(crumbs=True)
