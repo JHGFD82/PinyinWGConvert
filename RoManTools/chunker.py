@@ -11,7 +11,6 @@ Classes:
     TextChunkProcessor: Processes text into chunks for further processing based on the specified romanization method.
 """
 
-from functools import lru_cache
 from typing import List, Union, Dict, Tuple
 import re
 import unicodedata
@@ -47,6 +46,7 @@ class TextChunkProcessor:
         # Syllable processor is initialized with the configuration and romanization method parameters
         self.syllable_processor = SyllableProcessor(config, method_params)
         self.chunks: List[Union[List[Syllable], str]] = []
+        self._syllable_cache: Dict[str, Syllable] = {}
         self._process_text()
 
     def _split_text_into_segments(self, text: str) -> List[str]:
@@ -122,22 +122,17 @@ class TextChunkProcessor:
                     segment = nontext_chars[segment]['pretty']
                 self.config.print_crumb(1, 'Non-text segment', segment)
                 self.config.print_crumb(footer=True)
-        # Print cache information to ensure proper usage
-        # print(self._send_to_syllable_processor.cache_info())  # Displays cache statistics
 
     def _send_to_syllable_processor(self, remaining_text: str) -> Syllable:
-        # Check if the value is in the cache
-        cache = self._cached_syllable_processor.cache_info()
-        before_hits = cache.hits
-        result = self._cached_syllable_processor(remaining_text)
-        after_hits = self._cached_syllable_processor.cache_info().hits
-        if after_hits > before_hits:
+        # Cache is scoped to this instance so it doesn't outlive the processor
+        # (a class-level lru_cache would pin every instance in memory forever).
+        if remaining_text in self._syllable_cache:
+            result = self._syllable_cache[remaining_text]
             self.config.print_crumb(2, "Cached", f'"{result.text_attr.full_syllable}" | valid: {result.valid}')
+            return result
+        result = self.syllable_processor.create_syllable(remaining_text)
+        self._syllable_cache[remaining_text] = result
         return result
-
-    @lru_cache(maxsize=10000)
-    def _cached_syllable_processor(self, remaining_text: str) -> Syllable:
-        return self.syllable_processor.create_syllable(remaining_text)
 
     def _process_split_words(self, split_words: List[str]):
         """
