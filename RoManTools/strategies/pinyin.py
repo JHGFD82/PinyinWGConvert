@@ -22,37 +22,6 @@ class PinyinStrategy(RomanizationStrategy):
     - Clear syllable boundaries
     """
     
-    def find_initial(self, text: str, syllable: "Syllable") -> str:
-        """
-        Handles the initial part extraction for Pinyin method.
-        
-        Args:
-            text: The text from which to extract the initial.
-            syllable: The Syllable instance for accessing helper methods.
-            
-        Returns:
-            The initial part of the syllable, or 'ø' if no initial exists.
-        """
-        # Use the standard initial detection logic from syllable
-        # This delegates to the existing _find_initial logic but through strategy
-        from ..constants import vowels, apostrophes, dashes
-        
-        for i, c in enumerate(text):
-            if c in vowels:
-                if i == 0:  # If a vowel is found at the beginning of the syllable, return 'ø' to indicate no initial
-                    return 'ø'
-                # Otherwise, all text up to this point is the initial
-                if (initial := text[:i]) not in self.processor.init_list:  # Check if the initial is valid
-                    syllable.errors.append(f"invalid initial: '{initial}'")
-                    return text[:i]  # Return text up to this point if not valid
-                return initial
-            if c in apostrophes:  # Handle apostrophes using strategy
-                return self.handle_apostrophe_in_initial(text, i)
-            if c in dashes:  # Handle dashes using strategy  
-                return self.handle_dash_in_initial(text, i)
-
-        return text
-    
     def find_final(self, text: str, initial: str, syllable: "Syllable") -> str:
         """
         Handles the final part extraction for Pinyin method.
@@ -74,24 +43,7 @@ class PinyinStrategy(RomanizationStrategy):
             else:
                 return syllable.handle_consonant_case(text, i, initial)
         return text
-    
-    def validate_syllable(self, initial: str, final: str, syllable: "Syllable") -> bool:
-        """
-        Validate a complete syllable for Pinyin method.
-        
-        Args:
-            initial: The initial part of the syllable.
-            final: The final part of the syllable.
-            syllable: The Syllable instance for accessing helper methods.
-            
-        Returns:
-            True if the syllable is valid, False otherwise.
-        """
-        # Use the processor's validation method with error tracking
-        if initial == '':
-            return self.processor.validate_final_using_array('ø', final, error_tracker=syllable.error_tracker)
-        return self.processor.validate_final_using_array(initial, final, error_tracker=syllable.error_tracker)
-    
+
     def get_illegal_characters(self) -> List[Tuple[str, str]]:
         """
         Get illegal characters specific to Pinyin romanization.

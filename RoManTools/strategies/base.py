@@ -25,20 +25,6 @@ class RomanizationStrategy(ABC):
         """
         self.processor = processor
     
-    @abstractmethod
-    def find_initial(self, text: str, syllable: "Syllable") -> str:
-        """
-        Find the initial part of a syllable for this romanization method.
-        
-        Args:
-            text: The text from which to extract the initial.
-            syllable: The Syllable instance for accessing helper methods.
-            
-        Returns:
-            The initial part of the syllable, or 'ø' if no initial exists.
-        """
-        pass
-    
     def handle_apostrophe_in_initial(self, text: str, index: int) -> str:
         """
         Handle apostrophes found within initial detection for this romanization method.
@@ -82,22 +68,7 @@ class RomanizationStrategy(ABC):
             The final part of the syllable.
         """
         pass
-    
-    @abstractmethod
-    def validate_syllable(self, initial: str, final: str, syllable: "Syllable") -> bool:
-        """
-        Validate a complete syllable for this romanization method.
-        
-        Args:
-            initial: The initial part of the syllable.
-            final: The final part of the syllable.
-            syllable: The Syllable instance for accessing helper methods.
-            
-        Returns:
-            True if the syllable is valid, False otherwise.
-        """
-        pass
-    
+
     def get_illegal_characters(self) -> List[Tuple[str, str]]:
         """
         Get a list of illegal characters and reasons for this romanization method.
