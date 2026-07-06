@@ -20,7 +20,7 @@ Version 1.0 of this project will include the following features:
 
 ## Prerequisites
 
-There are no prerequisites. RoManTools was originally built using Numpy 2D arrays, but this has since been replaced with nested tuples.
+There are no prerequisites.
 
 ## Installation
 

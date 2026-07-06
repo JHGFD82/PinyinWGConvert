@@ -72,7 +72,7 @@ class BopomofoStrategy(RomanizationStrategy):
                     return 'ø'
                 # Check if the initial is valid for Bopomofo
                 if (initial := text_clean[:i]) not in self.processor.init_list:
-                    syllable.errors.append(f"invalid Bopomofo initial: '{initial}'")
+                    syllable.error_tracker.add_invalid_initial(initial, text_clean)
                     return text_clean[:i]
                 return initial
             if c in apostrophes:  # Bopomofo doesn't use apostrophes

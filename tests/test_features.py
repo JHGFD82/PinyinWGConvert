@@ -981,24 +981,6 @@ class TestErrorReporting(unittest.TestCase):
         self.assertGreater(result_invalid['error_count'], 0)
         self.assertGreater(len(result_invalid['error_report']), 0)
 
-    def test_backward_compatibility_errors_list(self):
-        """Test that syllable.errors list still exists for backward compatibility."""
-        from RoManTools.config import Config
-        from RoManTools.syllable import SyllableProcessor
-        from RoManTools.data_loader import load_method_params
-        
-        # With error_report=True, the backward-compat list should be populated
-        config = Config(error_report=True, crumbs=False)
-        method_params = load_method_params('py')
-        processor = SyllableProcessor(config, method_params)
-        
-        syl = processor.create_syllable('xyz')
-        
-        # Both new and old error tracking should work
-        self.assertFalse(syl.valid)
-        self.assertIsNotNone(syl.error_tracker)
-        self.assertIsInstance(syl.errors, list)
-
     def test_error_report_no_overhead_when_disabled(self):
         """Test that error reporting has minimal overhead when disabled."""
         from RoManTools.config import Config
@@ -1015,11 +997,7 @@ class TestErrorReporting(unittest.TestCase):
         # ErrorTracker should still exist (lightweight)
         self.assertIsNotNone(syl.error_tracker)
         self.assertTrue(syl.error_tracker.has_errors())
-        
-        # Backward-compat errors list is populated regardless of error_report flag
-        # (keeping it populated maintains backward compatibility)
-        self.assertGreater(len(syl.errors), 0)
-        
+
         # Can still generate report manually if needed
         report = syl.error_tracker.generate_report(compact=True)
         self.assertGreater(len(report), 0)

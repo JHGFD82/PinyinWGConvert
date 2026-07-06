@@ -210,8 +210,7 @@ class Syllable:
         self.text_attr = SyllableTextAttributes(text, remainder)
         self.valid = False
         self.status_attr = SyllableStatusAttributes(text)
-        self.errors: List[str] = []  # Keep for backward compatibility
-        self.error_tracker = ErrorTracker()  # New error tracking system
+        self.error_tracker = ErrorTracker()
         
         # Check for illegal characters before processing
         self._check_illegal_characters(text)
@@ -271,7 +270,6 @@ class Syllable:
             self.processor.config.print_crumb(3, "Syllable", f'"{self.text_attr.full_syllable}" valid: {self.valid}')
         else:
             error_msg = f'"{self.text_attr.full_syllable}" valid: {self.valid}'
-            self.errors.append(error_msg)
             self.processor.config.print_crumb(3, "Syllable", error_msg, log_level=logging.ERROR)
 
     def _find_initial_final(self, text: str) -> Tuple[str, str, str, str]:
@@ -318,7 +316,6 @@ class Syllable:
                     return 'ø'
                 # Otherwise, all text up to this point is the initial
                 if (initial := text[:i]) not in self.processor.init_list:  # Check if the initial is valid
-                    self.errors.append(f"invalid initial: '{initial}'")
                     self.error_tracker.add_invalid_initial(initial, text)
                     return text[:i]  # Return text up to this point if not valid
                 return initial
@@ -364,7 +361,6 @@ class Syllable:
         ]
         # If no valid finals are found, return the text up to the vowel
         if not test_finals:
-            self.errors.append(f"invalid final: '{text}'")
             self.error_tracker.add_invalid_final(text, self.text_attr.full_syllable or text, initial)
             if i == 0:
                 return None
@@ -456,8 +452,6 @@ class Syllable:
         illegal_chars = self.processor.strategy.check_illegal_characters(text, self)
         for char, reason in illegal_chars:
             self.error_tracker.add_illegal_character(char, text, reason)
-            if self.processor.config.error_report:
-                self.errors.append(f"illegal character: '{char}' - {reason}")
     
     def _check_rare_syllable(self) -> None:
         """
@@ -472,5 +466,3 @@ class Syllable:
                     self.text_attr.full_syllable,
                     method
                 )
-                if self.processor.config.error_report:
-                    self.errors.append(f"rare syllable in {method}: '{self.text_attr.full_syllable}'")

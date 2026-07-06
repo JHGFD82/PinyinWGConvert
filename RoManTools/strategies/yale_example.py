@@ -45,7 +45,7 @@ class YaleStrategy(RomanizationStrategy):
                     return 'ø'
                 # Check if the initial is valid for Yale
                 if (initial := text[:i]) not in self.processor.init_list:
-                    syllable.errors.append(f"invalid Yale initial: '{initial}'")
+                    syllable.error_tracker.add_invalid_initial(initial, text)
                     return text[:i]
                 return initial
             if c in apostrophes:  # Yale typically doesn't use apostrophes
