@@ -273,30 +273,6 @@ class ErrorTracker:
         """
         return len(self.errors) > 0
     
-    def has_error_type(self, error_type: ErrorType) -> bool:
-        """
-        Check if a specific error type has been tracked.
-        
-        Args:
-            error_type: The type of error to check for.
-        
-        Returns:
-            True if at least one error of this type exists, False otherwise.
-        """
-        return self._error_counts[error_type] > 0
-    
-    def get_errors_by_type(self, error_type: ErrorType) -> List[ValidationError]:
-        """
-        Get all errors of a specific type.
-        
-        Args:
-            error_type: The type of errors to retrieve.
-        
-        Returns:
-            List of errors matching the specified type.
-        """
-        return [error for error in self.errors if error.error_type == error_type]
-    
     def get_error_count(self, error_type: Optional[ErrorType] = None) -> int:
         """
         Get the count of errors.
@@ -348,40 +324,22 @@ class ErrorTracker:
         
         # Compact format for tabular data
         if compact:
-            return self._generate_compact_report(max_errors)
+            return self._generate_compact_report()
         
         # Detailed format for analysis
         return self._generate_verbose_report(include_summary, include_details, max_errors)
     
-    def _generate_compact_report(self, max_errors: Optional[int] = None) -> str:
+    def _generate_compact_report(self) -> str:
         """
         Generate a compact one-line error report suitable for tabular data.
-        
-        Args:
-            max_errors: Maximum number of errors to include. None means all errors.
-        
+        Returns error count in format: 1 error | 2 errors | etc. Only called
+        when errors are present (generate_report short-circuits otherwise).
+
         Returns:
-            Compact error report string.
+            Compact error count string.
         """
-        errors_to_report = self.errors[:max_errors] if max_errors else self.errors
-        
-        if not errors_to_report:
-            return "No errors"
-        
-        # Format: ERROR - error_type - "detail"
-        compact_errors: list[str] = []
-        for error in errors_to_report:
-            # Extract the most relevant detail
-            detail = error.details.get('initial') or error.details.get('final') or \
-                     error.details.get('character') or error.syllable
-            compact_errors.append(f"ERROR - {error.error_type.value} - \"{detail}\"")
-        
-        # If we truncated, add indicator
-        if max_errors and len(self.errors) > max_errors:
-            remaining = len(self.errors) - max_errors
-            compact_errors.append(f"(+{remaining} more)")
-        
-        return "; ".join(compact_errors)
+        error_count = len(self.errors)
+        return "1 error" if error_count == 1 else f"{error_count} errors"
     
     def _generate_verbose_report(
         self,
@@ -424,11 +382,6 @@ class ErrorTracker:
                 report_lines.append(f"... and {remaining} more error(s)")
         
         return "\n".join(report_lines)
-    
-    def clear(self) -> None:
-        """Clear all tracked errors."""
-        self.errors.clear()
-        self._error_counts = {error_type: 0 for error_type in ErrorType}
     
     def merge(self, other: "ErrorTracker") -> None:
         """

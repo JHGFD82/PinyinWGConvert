@@ -34,19 +34,23 @@ def validate_syllable(
     Args:
         text: The syllable text to validate.
         method: Romanization method ('py' for Pinyin, 'wg' for Wade-Giles).
-        compact: If True, return compact one-line format. If False, return detailed format.
-        max_errors: Maximum number of errors to include (0 = all errors).
-    
+        compact: If True, return a one-line error count (e.g. "2 errors"). If
+            False, return a detailed multi-line report. Note: max_errors has no
+            effect when compact is True; use get_validation_column() if you
+            want the specific first error instead of a count.
+        max_errors: Maximum number of errors to include when compact is False
+            (0 = all errors).
+
     Returns:
         Error report string, or empty string if no errors.
-    
+
     Examples:
         >>> validate_syllable('beijing', method='py')
         ''
         >>> validate_syllable('xyz', method='py')
-        'ERROR - invalid_initial - "xyz"'
+        '2 errors'
         >>> validate_syllable('pia', method='py')
-        'ERROR - rare_syllable - "pia"'
+        '1 error'
     """
     config = Config(error_report=False)
     method_params = load_method_params(method)
@@ -78,16 +82,20 @@ def validate_text(
     Args:
         text: The text to validate.
         method: Romanization method ('py' for Pinyin, 'wg' for Wade-Giles).
-        compact: If True, use compact error format. If False, use detailed format.
-        max_errors: Maximum number of errors to include (0 = all errors).
-    
+        compact: If True, 'error_report' is a one-line error count (e.g. "2
+            errors"). If False, 'error_report' is a detailed multi-line report.
+            max_errors has no effect when compact is True.
+        max_errors: Maximum number of errors to include when compact is False
+            (0 = all errors).
+
     Returns:
         Dictionary with keys:
             - 'valid': bool, True if no errors
             - 'error_count': int, number of errors detected
             - 'error_types': list of error type strings
-            - 'error_report': str, formatted error report
-            - 'first_error': str, first error only (compact format)
+            - 'error_report': str, formatted error report (see compact above)
+            - 'first_error': str, the specific first error, always detailed
+              regardless of compact (e.g. 'ERROR - invalid_initial - "xyz"')
     
     Examples:
         >>> result = validate_text('beijing', method='py')
@@ -165,8 +173,8 @@ df = pd.DataFrame({
 # Option 1: Simple validation column (OK or error)
 df['validation'] = df['syllable'].apply(get_validation_column)
 
-# Option 2: Just get error messages (empty if valid)
-df['errors'] = df['syllable'].apply(lambda x: validate_syllable(x, compact=True, max_errors=1))
+# Option 2: Just get an error count (empty string if valid)
+df['errors'] = df['syllable'].apply(lambda x: validate_syllable(x, compact=True))
 
 # Option 3: Get detailed validation info
 validation_results = df['syllable'].apply(validate_text)

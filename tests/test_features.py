@@ -687,8 +687,8 @@ class TestErrorReporting(unittest.TestCase):
         self.assertTrue(tracker.has_errors())
         self.assertEqual(tracker.get_error_count(), 1)
         self.assertEqual(tracker.get_error_count(ErrorType.INVALID_INITIAL), 1)
-        self.assertTrue(tracker.has_error_type(ErrorType.INVALID_INITIAL))
-        
+        self.assertIn(ErrorType.INVALID_INITIAL.value, tracker.get_error_types_list())
+
         error = tracker.errors[0]
         self.assertEqual(error.error_type, ErrorType.INVALID_INITIAL)
         self.assertEqual(error.message, "Invalid initial: 'xyz'")
@@ -819,33 +819,33 @@ class TestErrorReporting(unittest.TestCase):
     def test_error_tracker_generate_report_compact(self):
         """Test generating compact error report."""
         from RoManTools.errors import ErrorTracker
-        
+
         tracker = ErrorTracker()
         tracker.add_invalid_initial('xyz', 'xyzang')
         tracker.add_invalid_final('qqq', 'bqqq')
-        
+
         report = tracker.generate_report(compact=True)
-        
-        # Compact format shows the detail (initial/final), not the full syllable
-        self.assertIn('ERROR - invalid_initial - "xyz"', report)
-        self.assertIn('ERROR - invalid_final - "qqq"', report)
-        self.assertIn(';', report)
+
+        # Compact format is just a one-line error count, not per-error detail
+        # (use get_first_error_string() for the specific first error)
+        self.assertEqual(report, '2 errors')
 
     def test_error_tracker_generate_report_max_errors(self):
-        """Test max_errors limit in report generation."""
+        """Test max_errors limit in verbose report generation (compact ignores max_errors)."""
         from RoManTools.errors import ErrorTracker
-        
+
         tracker = ErrorTracker()
         tracker.add_invalid_initial('x', 'x')
         tracker.add_invalid_initial('y', 'y')
         tracker.add_invalid_initial('z', 'z')
-        
-        report = tracker.generate_report(compact=True, max_errors=2)
-        
-        # Should only show first 2 errors plus "more" indicator (without "...")
-        self.assertIn('ERROR - invalid_initial - "x"', report)
-        self.assertIn('ERROR - invalid_initial - "y"', report)
-        self.assertIn('(+1 more)', report)
+
+        report = tracker.generate_report(compact=False, max_errors=2, include_summary=False)
+
+        # Should only show first 2 errors plus a truncation indicator
+        self.assertIn("Invalid initial: 'x'", report)
+        self.assertIn("Invalid initial: 'y'", report)
+        self.assertNotIn("Invalid initial: 'z'", report)
+        self.assertIn('... and 1 more error(s)', report)
 
     def test_syllable_error_tracking_invalid_initial(self):
         """Test that syllables track invalid initial errors."""
@@ -861,7 +861,7 @@ class TestErrorReporting(unittest.TestCase):
         syl = processor.create_syllable('xyz')
         
         self.assertFalse(syl.valid)
-        self.assertTrue(syl.error_tracker.has_error_type(ErrorType.INVALID_INITIAL))
+        self.assertIn(ErrorType.INVALID_INITIAL.value, syl.error_tracker.get_error_types_list())
         self.assertGreater(syl.error_tracker.get_error_count(), 0)
 
     def test_syllable_error_tracking_illegal_character(self):
@@ -878,7 +878,7 @@ class TestErrorReporting(unittest.TestCase):
         syl = processor.create_syllable("zh'ng")
         
         self.assertFalse(syl.valid)
-        self.assertTrue(syl.error_tracker.has_error_type(ErrorType.ILLEGAL_CHARACTER))
+        self.assertIn(ErrorType.ILLEGAL_CHARACTER.value, syl.error_tracker.get_error_types_list())
 
     def test_syllable_error_tracking_rare_syllable(self):
         """Test that syllables track rare syllable warnings."""
@@ -896,7 +896,7 @@ class TestErrorReporting(unittest.TestCase):
         
         # Syllable should be valid but have rare warning
         self.assertTrue(syl.valid)
-        if syl.error_tracker.has_error_type(ErrorType.RARE_SYLLABLE):
+        if ErrorType.RARE_SYLLABLE.value in syl.error_tracker.get_error_types_list():
             self.assertEqual(syl.error_tracker.get_error_count(ErrorType.RARE_SYLLABLE), 1)
 
     def test_config_error_report_flag(self):
@@ -951,9 +951,9 @@ class TestErrorReporting(unittest.TestCase):
         result_valid = validate_syllable('zhong', 'py')
         self.assertEqual(result_valid, '')
         
-        # Invalid syllable returns error string
+        # Invalid syllable returns a compact error count string
         result_invalid = validate_syllable('xyz', 'py')
-        self.assertIn('invalid_initial', result_invalid)
+        self.assertEqual(result_invalid, '2 errors')
 
     def test_table_utils_validate_text(self):
         """Test table_utils.validate_text() function."""
