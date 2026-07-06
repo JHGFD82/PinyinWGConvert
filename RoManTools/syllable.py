@@ -1,18 +1,23 @@
 """
-Syllable processing utilities for romanized Mandarin text.
+Building and validating individual syllables.
 
-This module provides classes and methods for processing and validating syllables in romanized Mandarin text. It includes functionality for:
-- Initializing syllable processing with configuration settings.
-- Creating and validating syllables.
-- Handling different romanization methods (Pinyin and Wade-Giles).
-- Tracking and reporting validation errors.
+This is the heart of RoManTools: taking one piece of romanized text and
+figuring out whether it's a real syllable, and if so, what its parts are.
+Every Mandarin syllable (in the romanization methods RoManTools supports)
+breaks down into an initial and a final - for example, in "zhong", the
+initial is "zh" (the consonant sound at the start) and the final is "ong"
+(the vowel sound and anything after it). Some syllables have no initial at
+all (e.g. "an"); RoManTools represents that case internally with the
+placeholder symbol "ø" rather than an empty string, so it's never confused
+with "we haven't looked yet."
 
 Classes:
-    SyllableProcessor: Handles the loading of configuration settings and initializes data required for processing syllables.
-    Syllable: Represents a syllable and its components (initial, final) in the context of a romanization method.
+    SyllableProcessor: Shared setup for one romanization method - loads its
+        syllable-validity data once, then builds and validates Syllable
+        objects with it.
+    Syllable: One syllable, with its initial/final worked out and validated.
 """
 
-# from functools import lru_cache
 import re
 import logging
 from typing import Tuple, Optional, Dict, Union, List, Set
@@ -29,17 +34,25 @@ MethodParams = Dict[str, Union[Tuple[Tuple[bool, ...], ...], List[str], str]]
 
 class SyllableProcessor:
     """
-    Handles the loading of configuration settings and initializes data required for processing
-    syllables.
+    Holds everything needed to build and validate syllables for one
+    romanization method, so that work only has to happen once per method
+    rather than once per syllable.
+
+    Pinyin and Wade-Giles each parse syllables slightly differently (for
+    example, Wade-Giles keeps apostrophes as part of the initial; Pinyin
+    doesn't use them at all). Rather than scattering `if method == 'wg'`
+    checks throughout this file, each method's specific rules live in their
+    own small object, called a strategy (see strategies/base.py for the
+    full explanation) - this class picks the right one and hands it to
+    every Syllable it builds.
     """
 
     def __init__(self, config: Config, method_params: MethodParams):
         """
-        Initializes the SyllableProcessor with configuration settings and lists for processing.
-
         Args:
-            config (Config): The configuration object with settings like error_skip and crumbs.
-            method_params (MethodParams): The parameters for the romanization method, including the validation array.
+            config (Config): The settings for this run (see config.py).
+            method_params (MethodParams): The syllable-validity data for one
+                romanization method (see data_loader.load_method_params).
         """
 
         self.config = config
@@ -47,51 +60,58 @@ class SyllableProcessor:
         self.init_list = method_params['init_list']
         self.fin_list = method_params['fin_list']
         self.method = method_params['method']
-        
+
         # Initialize the appropriate strategy for this romanization method
         self.strategy = RomanizationStrategyFactory.create_strategy(str(self.method), self)
-        
+
         # Load rare syllables data
         self.rare_syllables: Dict[str, Set[str]] = load_rare_syllables()
-        
+
         # Initialize error tracker
         self.error_tracker = ErrorTracker()
 
     def create_syllable(self, text: str, remainder: str = "") -> "Syllable":
         """
-        Creates a Syllable object based on the input text.
+        Build a Syllable object from a piece of text.
 
         Args:
-            text (str): The input text to be processed into a syllable.
-            remainder (str): The remainder of the input text to be processed into a syllable.
+            text (str): The text to parse into a syllable.
+            remainder (str): Any leftover text already known to come after
+                this syllable (usually left as the default; see
+                Syllable._find_initial_final for where this is used).
 
         Returns:
-            Syllable: A Syllable object with information about the initial, final, and validity.
+            Syllable: The resulting syllable, with its initial, final, and
+                validity already worked out.
         """
-
-        # result = Syllable(text, self, remainder)
-        # print(result.__dict__)
-        # return result
         return Syllable(text, self, remainder)
-    
+
     def validate_final_using_array(self, initial: str, final: str, silent: bool = False, error_tracker: Optional[ErrorTracker] = None) -> bool:
         """
-        Validates the final part of the syllable by checking against the validation array.
-        This method is used by strategies to validate syllable components.
+        Check whether a specific initial+final combination is a real
+        syllable, by looking it up in the method's validity table (loaded
+        from a CSV file - see data_loader.load_romanization_data). The
+        table is a grid, one row per initial and one column per final, so
+        this comes down to finding the right row and column and reading the
+        True/False value stored there.
 
         Args:
-            initial (str): The initial part of the syllable.
-            final (str): The final part of the syllable.
-            silent (bool): If True, suppresses crumb output for validation errors.
-            error_tracker (Optional[ErrorTracker]): Error tracker to record validation errors.
+            initial (str): The initial to look up (or 'ø' for "no initial").
+            final (str): The final to look up.
+            silent (bool): If True, don't print a breadcrumb or record an
+                error for an invalid result - used when this is just a
+                trial check (e.g. "could this be the final?") rather than a
+                final decision.
+            error_tracker (Optional[ErrorTracker]): Where to record the
+                problem if the combination turns out to be invalid.
 
         Returns:
-            bool: True if the final is valid, otherwise False.
+            bool: True if this initial+final combination is a real syllable.
         """
         # Indexes for both initial and final are both determined
         initial_index = self.init_list.index(initial) if initial in self.init_list else -1
         final_index = self.fin_list.index(final) if final in self.fin_list else -1
-        
+
         # If no valid indexes are found, return False
         if initial_index == -1 or final_index == -1:
             if not silent:
@@ -116,10 +136,10 @@ class SyllableProcessor:
                 error_message = ", ".join(error_parts)
                 self.config.print_crumb(3, "Validation", error_message, log_level=logging.ERROR)
             return False
-            
+
         # Check the validity of the initial-final combination using the syllable array
         is_valid = bool(self.ar[initial_index][final_index])
-        
+
         # If the combination is invalid, track it
         if not is_valid and not silent and error_tracker:
             error_tracker.add_invalid_syllable(
@@ -133,22 +153,21 @@ class SyllableProcessor:
                 f"invalid syllable combination: '{initial}' + '{final}'",
                 log_level=logging.ERROR
             )
-        
+
         return is_valid
 
 
 class SyllableTextAttributes:
     """
-    Represents the text attributes of a syllable, including the initial, final, and full syllable.
+    The text-related pieces of a syllable: its raw text, and (once worked
+    out) its initial, final, and combined full form.
     """
 
     def __init__(self, text: str, remainder: str = ""):
         """
-        Initializes the SyllableTextAttributes object with the provided text and remainder.
-
         Args:
-            text: The syllable text to be processed.
-            remainder: The remainder of the text to be processed.
+            text: The syllable's text.
+            remainder: Any leftover text known to follow this syllable.
         """
 
         self.text = text.lower()
@@ -160,15 +179,16 @@ class SyllableTextAttributes:
 
 class SyllableStatusAttributes:
     """
-    Represents the status attributes of a syllable, including capitalization, apostrophes, and dashes.
+    How a syllable was originally written, so that formatting can be
+    restored later: was it in ALL CAPS, Title Case, did it start with an
+    apostrophe or a dash?
     """
 
     def __init__(self, text: str):
         """
-        Initializes the SyllableStatusAttributes object with the provided text.
-
         Args:
-            text: The syllable text to be processed.
+            text: The syllable's original text, before any of this
+                information is stripped out for parsing.
         """
 
         self.has_apostrophe = False
@@ -179,10 +199,9 @@ class SyllableStatusAttributes:
 
     def _is_titlecase(self, text: str):
         """
-        Checks if the syllable text is in title case, considering contractions.
-
-        Returns:
-            bool: True if the text is in title case, considering contractions; otherwise, False.
+        Work out whether `text` is capitalized like "Zhong" rather than
+        "zhong" or "ZHONG", while ignoring apostrophes/dashes that would
+        otherwise confuse Python's built-in `.istitle()` check.
         """
 
         # Remove all non-letter characters (.istitle() does not function properly with apostrophes and dashes)
@@ -192,18 +211,24 @@ class SyllableStatusAttributes:
 
 class Syllable:
     """
-    Represents a syllable and its components (initial, final) in the context of a romanization method.
+    One syllable: its text, its initial/final breakdown, whether it's
+    valid, and any problems found along the way (in `error_tracker` - see
+    errors.py).
     """
 
     def __init__(self, text: str, processor: SyllableProcessor, remainder: str = ""):
 
         """
-        Initializes a Syllable object with provided configuration and text.
+        Parses and validates `text` as a syllable immediately upon creation
+        - by the time this constructor returns, every attribute described
+        above is already filled in.
 
         Args:
-            text (str): The syllable text to be processed.
-            remainder (str, optional): The remainder of the text to be processed. Defaults to "".
-            processor (SyllableProcessor): The processor object used to validate the syllable.
+            text (str): The syllable's text.
+            remainder (str, optional): Any leftover text known to follow
+                this syllable. Defaults to "".
+            processor (SyllableProcessor): The processor to validate
+                against (holds the method-specific rules and data).
         """
 
         self.processor = processor
@@ -211,26 +236,27 @@ class Syllable:
         self.valid = False
         self.status_attr = SyllableStatusAttributes(text)
         self.error_tracker = ErrorTracker()
-        
+
         # Check for illegal characters before processing
         self._check_illegal_characters(text)
-        
+
         self._handle_first_char()
         self._process_syllable()
-        
+
         # Check for rare syllables if valid
         if self.valid:
             self._check_rare_syllable()
 
     def apply_caps(self, text: str) -> str:
         """
-        Applies capitalization rules based on the syllable's properties.
+        Re-apply this syllable's original capitalization to `text` (used
+        after conversion, to restore the capitalization the input had).
 
         Args:
-            text (str): The text to be transformed.
+            text (str): The text to capitalize.
 
         Returns:
-            str: The transformed text with applied capitalization.
+            str: The capitalized text.
         """
 
         if self.status_attr.uppercase:
@@ -241,10 +267,10 @@ class Syllable:
 
     def _handle_first_char(self):
         """
-        Handles the first character of the text if it is an apostrophe or dash, updating the corresponding flags.
-
-        Returns:
-            str: The text with the first character removed if it was an apostrophe or dash.
+        If the syllable's text starts with an apostrophe or dash, note that
+        (for `status_attr`) and, except for a Wade-Giles leading apostrophe
+        (which is a meaningful part of the initial, not just a separator),
+        strip it off before parsing continues.
         """
 
         if (first_char := self.text_attr.text[0]) in apostrophes:
@@ -257,7 +283,9 @@ class Syllable:
 
     def _process_syllable(self):
         """
-        Processes the syllable to extract the initial, final, and remainder parts and validates the syllable.
+        Work out this syllable's initial, final, and full form, then
+        validate the result and print a breadcrumb describing what was
+        found.
         """
 
         # Construct parts of syllable
@@ -274,13 +302,16 @@ class Syllable:
 
     def _find_initial_final(self, text: str) -> Tuple[str, str, str, str]:
         """
-        Identifies the initial, final, and remainder of the given syllable text.
+        Work out where this syllable's initial ends and its final begins,
+        and what (if anything) is left over as the start of the next
+        syllable.
 
         Args:
-            text (str): The input text to be split into initial, final, and remainder.
+            text (str): The text to parse.
 
         Returns:
-            Tuple[str, str, str, str]: The initial, final, full syllable, and remainder of the input text.
+            Tuple[str, str, str, str]: (initial, final, full syllable,
+                leftover text for the next syllable).
         """
 
         initial = self._find_initial(text)
@@ -301,13 +332,16 @@ class Syllable:
 
     def _find_initial(self, text: str) -> str:
         """
-        Extracts the initial component from the syllable text.
+        Read characters from the start of `text` until a vowel (or
+        apostrophe) is reached - everything read up to that point is the
+        initial. If the very first character is a vowel, there's no
+        initial at all, represented as 'ø'.
 
         Args:
-            text (str): The syllable text to extract the initial from.
+            text (str): The text to extract the initial from.
 
         Returns:
-            str: The initial part of the syllable or 'ø' if no valid initial is found.
+            str: The initial, or 'ø' if there isn't one.
         """
 
         for i, c in enumerate(text):
@@ -326,28 +360,38 @@ class Syllable:
 
     def _find_final(self, text: str, initial: str) -> str:
         """
-        Determines the final part of the syllable based on the input text using the strategy pattern.
+        Work out the final, once the initial is already known. The actual
+        rules differ by romanization method (see handle_vowel_case and
+        handle_consonant_case below for Pinyin's rules, and
+        strategies/wade_giles.py for Wade-Giles's), so this just asks the
+        current method's strategy object to do it.
 
         Args:
-            text (str): The syllable text from which the final part is extracted.
-            initial (str): The initial part of the syllable used for validation.
+            text (str): The remaining text to extract the final from.
+            initial (str): This syllable's already-known initial.
 
         Returns:
-            str: The final part of the syllable.
+            str: The final.
         """
         return self.processor.strategy.find_final(text, initial, self)
 
     def handle_vowel_case(self, text: str, i: int, initial: str) -> Optional[str]:
         """
-        Handles cases where the final starts with a vowel.
+        Work out the final when it starts with a vowel at position `i` in
+        `text`. Because a run of vowels can belong to more than one
+        possible final (e.g. "ao" vs. just "a"), this checks every final in
+        the method's known list that starts with the text seen so far, and
+        picks the longest one that's actually valid for this initial.
 
         Args:
-            text (str): The syllable text to be processed.
-            i (int): The index of the vowel in the text.
-            initial (str): The initial part of the syllable used for validation.
+            text (str): The text being parsed.
+            i (int): Where the vowel was found in `text`.
+            initial (str): This syllable's already-known initial.
 
         Returns:
-            str: The final part of the syllable or a subset based on potential candidates.
+            The final, or None to signal "keep scanning" (the caller,
+            PinyinStrategy.find_final in strategies/pinyin.py, moves on to
+            the next character in that case).
         """
 
         if i + 1 == len(text):
@@ -370,15 +414,18 @@ class Syllable:
 
     def handle_consonant_case(self, text: str, i: int, initial: str) -> str:
         """
-        Handles cases where the final starts with a consonant, including special cases like "er", "n", and "ng".
+        Work out the final when it starts with a consonant at position `i`
+        in `text`, including the special cases "er"/"erh", "n", and "ng"
+        that don't follow the simple "consonants can't be part of a final"
+        rule.
 
         Args:
-            text (str): The syllable text to be processed.
-            i (int): The index of the consonant in the text.
-            initial (str): The initial part of the syllable used for validation.
+            text (str): The text being parsed.
+            i (int): Where the consonant was found in `text`.
+            initial (str): This syllable's already-known initial.
 
         Returns:
-            str: The final part of the syllable.
+            str: The final.
         """
 
         remainder = len(text) - i - 1
@@ -412,54 +459,66 @@ class Syllable:
         # Default case: handle all other consonants
         return text[:i]
 
-    # @lru_cache(maxsize=100000)
     def _validate_final(self, initial: str, final: str, silent: bool = False) -> bool:
         """
-        Validates the final part of the syllable by checking against a predefined list of valid combinations. This
-        function is also referred to by _validate_syllable and is used to validate an entire syllable once it is fully
-        determined.
+        Check whether this specific initial+final combination is a real
+        syllable (delegates to SyllableProcessor.validate_final_using_array
+        above, passing along this syllable's own error_tracker so any
+        problem found gets recorded against this syllable specifically).
+        Also used, via _validate_syllable below, to do the final check once
+        the whole syllable has been parsed.
 
         Args:
-            initial (str): The initial part of the syllable.
-            final (str): The final part of the syllable.
-            silent (bool): If True, suppresses crumb output for validation errors. Used when testing potential finals.
+            initial (str): The initial to check.
+            final (str): The final to check.
+            silent (bool): If True, don't print a breadcrumb or record an
+                error - used while still testing candidate finals, before a
+                final decision has been made.
 
         Returns:
-            bool: True if the final is valid, otherwise False.
+            bool: True if the combination is valid.
         """
         return self.processor.validate_final_using_array(initial, final, silent, self.error_tracker)
 
     def _validate_syllable(self) -> bool:
         """
-        Validates the overall syllable by checking the initial-final combination.
+        Check whether this syllable's initial+final combination (now that
+        both are known) is a real syllable.
 
         Returns:
-            bool: True if the syllable is valid, otherwise False.
+            bool: True if valid.
         """
 
         # Syllable validation is performed by _validate_final, but is referenced here; "ø" supplied again for no initial
         if self.text_attr.initial == '':
             return self._validate_final('ø', self.text_attr.final)
         return self._validate_final(self.text_attr.initial, self.text_attr.final)
-    
+
     def _check_illegal_characters(self, text: str) -> None:
         """
-        Check for illegal characters in the syllable text using the romanization strategy.
-        
+        Check `text` for characters that should never appear in this
+        romanization method at all (digits, stray punctuation, etc. - the
+        specific list depends on the method, e.g. Pinyin disallows
+        apostrophes inside a syllable while Wade-Giles requires them), and
+        record any found in this syllable's error_tracker.
+
         Args:
-            text: The original syllable text to check.
+            text: The syllable's original text to check.
         """
         illegal_chars = self.processor.strategy.check_illegal_characters(text, self)
         for char, reason in illegal_chars:
             self.error_tracker.add_illegal_character(char, text, reason)
-    
+
     def _check_rare_syllable(self) -> None:
         """
-        Check if the validated syllable is marked as rare in the conversion data.
+        If this (already-valid) syllable is flagged as rare/unusual for its
+        method (see data_loader.load_rare_syllables), record that as a
+        note in the error_tracker - not a failure, just something worth a
+        second look.
         """
         method = str(self.processor.method)
         full_syllable_lower = self.text_attr.full_syllable.lower()
-        
+
         if method in self.processor.rare_syllables:
             if full_syllable_lower in self.processor.rare_syllables[method]:
                 self.error_tracker.add_rare_syllable(
