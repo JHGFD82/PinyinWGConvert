@@ -2,9 +2,13 @@
 
 ## Overview
 
-RoManTools provides flexible error reporting optimized for use with tabular data (pandas DataFrames, CSV files, database tables, etc.). You can choose between detailed reports and compact one-line formats suitable for table columns.
+If you're validating a whole column of romanized text - in a pandas DataFrame (the table-shaped object the popular pandas data-analysis library uses), a spreadsheet exported to CSV, or a database table - you usually want one short result per row, not a full multi-line report. RoManTools's `table_utils` module is built for exactly that: pass it one syllable at a time (for example via `df['column'].apply(...)`), and get back a validation result sized to fit in a table cell.
 
-**Note:** The table utility functions are internal modules and must be imported via their submodule paths. They are not exposed in the main `RoManTools` namespace to keep the public API simple and focused.
+**Note:** `table_utils` isn't included in `from RoManTools import *` - it's a separate, opt-in module, kept out of the main package so the everyday `segment_text`/`convert_text`/etc. API stays small and focused. Import it explicitly:
+
+```python
+from RoManTools.table_utils import get_validation_column
+```
 
 ## Quick Start for Table Users
 
@@ -13,7 +17,7 @@ RoManTools provides flexible error reporting optimized for use with tabular data
 ```python
 from RoManTools.table_utils import get_validation_column
 
-# Returns "OK" if valid, or a compact error if invalid
+# Returns "OK" if valid, or a short description of the first problem if not
 df['validation'] = df['syllable'].apply(get_validation_column)
 ```
 
@@ -29,23 +33,31 @@ ma1         ERROR - illegal_character - "1"
 
 ## Error Report Formats
 
-### Compact Format (Table-Friendly)
+There are two report formats, and it's important to know which functions give you which:
 
-**Format:** `ERROR - error_type - "detail"`
+### Compact Format: just a count
 
-**Examples:**
-- `ERROR - invalid_initial - "mh"`
-- `ERROR - invalid_final - "xyz"`
-- `ERROR - rare_syllable - "pia"`
-- `ERROR - illegal_character - "1"`
+`ErrorTracker.generate_report(compact=True)` - used internally by `validate_syllable()` and `validate_text()` below when `compact=True` (their default) - returns nothing more than how many problems were found:
 
-**Multiple errors (when max_errors not set to 1):**
-- `ERROR - invalid_initial - "xyz"; ERROR - invalid_final - "xyz"`
+- `''` (empty string) if the syllable is valid.
+- `'1 error'` if exactly one problem was found.
+- `'2 errors'`, `'3 errors'`, and so on otherwise.
 
-**Truncated errors:**
-- `ERROR - invalid_initial - "mh"; (+2 more)`
+It does **not** say what the problems were - just how many there are. This is intentionally minimal: it's meant for a quick "does this column need attention" glance, not diagnosis.
 
-### Detailed Format (Analysis)
+### First-Error Format: what's wrong, briefly
+
+If you need to know *what* went wrong (not just how many things did), use `get_validation_column()` or `ErrorTracker.get_first_error_string()` instead - both return a string like:
+
+```
+ERROR - invalid_initial - "mh"
+```
+
+This describes only the *first* problem found, even if there are more - it's meant to fit in one table cell, not to be exhaustive. For every problem, use the detailed format below.
+
+### Detailed Format: everything, multi-line
+
+`generate_report(compact=False)` returns a full multi-line breakdown - a per-category count summary, followed by every individual problem found:
 
 ```
 === Error Summary ===
@@ -58,20 +70,22 @@ ma1         ERROR - illegal_character - "1"
 2. [invalid_final] Invalid final: '' (final='', initial='xyz')
 ```
 
+Pass `max_errors=N` to cap how many individual problems are listed in this detailed format (with a `... and N more error(s)` line if there were more) - this has no effect on the compact or first-error formats, since neither of those lists individual problems in the first place.
+
 ## Python API
 
 ### table_utils Module
 
-Three convenience functions for table processing:
+Three functions for table processing:
 
 #### 1. `get_validation_column(text, method='py')` - Simplest
 
-Returns "OK" or first error in compact format.
+Returns `"OK"`, or the first-error-format description of the first problem found.
 
 ```python
 from RoManTools.table_utils import get_validation_column
 
-# Single syllable
+# Invalid syllable
 result = get_validation_column('mha')
 # Returns: 'ERROR - invalid_initial - "mh"'
 
@@ -79,38 +93,32 @@ result = get_validation_column('mha')
 result = get_validation_column('beijing')
 # Returns: 'OK'
 
-# With DataFrame
+# With a DataFrame
 df['validation'] = df['syllable'].apply(get_validation_column)
 ```
 
 #### 2. `validate_syllable(text, method='py', compact=True, max_errors=1)` - Flexible
 
-Returns error report string (empty if valid).
+Returns the compact-format error count by default (empty string if valid); pass `compact=False` for the detailed format instead.
 
 ```python
 from RoManTools.table_utils import validate_syllable
 
-# First error only (default)
-error = validate_syllable('xyz', max_errors=1)
-# Returns: 'ERROR - invalid_initial - "xyz"; (+1 more)'
+# Compact (default): just a count
+error = validate_syllable('xyz')
+# Returns: '2 errors'
 
-# All errors
-error = validate_syllable('xyz', max_errors=0)
-# Returns: 'ERROR - invalid_initial - "xyz"; ERROR - invalid_final - "xyz"'
+# Detailed, capped to the first problem
+error = validate_syllable('xyz', compact=False, max_errors=1)
+# Returns: "=== Error Summary ===\n  invalid_initial: 1\n  invalid_final: 1\n  Total: 2\n\n=== Detailed Errors ===\n1. [invalid_initial] Invalid initial: 'xyz' (initial='xyz')\n... and 1 more error(s)"
 
-# Detailed format
-error = validate_syllable('xyz', compact=False)
-# Returns detailed multi-line report
-
-# With DataFrame
-df['errors'] = df['syllable'].apply(
-    lambda x: validate_syllable(x, compact=True, max_errors=1)
-)
+# With a DataFrame
+df['errors'] = df['syllable'].apply(lambda x: validate_syllable(x))
 ```
 
 #### 3. `validate_text(text, method='py', compact=True, max_errors=0)` - Most Detailed
 
-Returns dictionary with complete validation information.
+Despite the name, this validates one syllable at a time too (same as `validate_syllable` - "text" here just matches the parameter name used elsewhere in the package). Returns a dictionary with everything about the result at once, which is useful for building several DataFrame columns from a single pass.
 
 ```python
 from RoManTools.table_utils import validate_text
@@ -121,11 +129,11 @@ result = validate_text('xyz')
 #     'valid': False,
 #     'error_count': 2,
 #     'error_types': ['invalid_initial', 'invalid_final'],
-#     'error_report': 'ERROR - invalid_initial - "xyz"; ERROR - invalid_final - "xyz"',
+#     'error_report': '2 errors',
 #     'first_error': 'ERROR - invalid_initial - "xyz"'
 # }
 
-# With DataFrame - create multiple columns
+# With a DataFrame - create multiple columns from one pass
 validation_results = df['syllable'].apply(validate_text)
 df['valid'] = validation_results.apply(lambda x: x['valid'])
 df['error_count'] = validation_results.apply(lambda x: x['error_count'])
@@ -135,7 +143,7 @@ df['first_error'] = validation_results.apply(lambda x: x['first_error'])
 
 ### ErrorTracker Methods
 
-If you're working with the core API, ErrorTracker has new methods:
+If you're working with the core API directly rather than through `table_utils`, `ErrorTracker` (see errors.py) has the same table-friendly methods built in:
 
 ```python
 from RoManTools.config import Config
@@ -146,73 +154,87 @@ config = Config(error_report=False)
 processor = SyllableProcessor(config, load_method_params('py'))
 syllable = processor.create_syllable('xyz')
 
-# Get first error only (compact)
+# First problem only, briefly
 first_error = syllable.error_tracker.get_first_error_string()
 # Returns: 'ERROR - invalid_initial - "xyz"'
 
-# Get list of error types
+# Which categories of problem occurred
 error_types = syllable.error_tracker.get_error_types_list()
 # Returns: ['invalid_initial', 'invalid_final']
 
-# Generate compact report
-report = syllable.error_tracker.generate_report(compact=True, max_errors=1)
-# Returns: 'ERROR - invalid_initial - "xyz"; (+1 more)'
+# Compact report: just a count
+report = syllable.error_tracker.generate_report(compact=True)
+# Returns: '2 errors'
 
-# Generate detailed report
+# Detailed report
 report = syllable.error_tracker.generate_report(compact=False)
-# Returns multi-line detailed report
+# Returns the multi-line detailed report shown above
 ```
 
 ## Command-Line Interface
 
-### Error Reporting Flags (Hierarchical)
+### Error Reporting Flags
 
 **Primary Flag:**
-- `-R, --error_report`: Enable error reporting (master switch)
+- `-R, --error_report`: Turn on error reporting.
 
 **Secondary Flags (require `-R`):**
-- `--error_compact`: Use compact one-line error format instead of detailed (default: detailed)
-- `--error_max N`: Report maximum N errors (0 = all errors, N = first N errors)
+- `--error_compact`: Use the compact (count-only) format instead of the detailed one (the default is detailed).
+- `--error_max N`: In the detailed format, list at most N individual problems (0 = all of them). Has no effect on the compact format.
 
-**Note:** The secondary flags (`--error_compact` and `--error_max`) can only be used when `-R` is enabled. Attempting to use them without `-R` will result in an error.
+**Note:** `-R` must currently be used with the `convert` or `cherry-pick` subcommands to have any visible effect - `validator`, `segment`, `syllable-count`, and `detect-method` don't currently report errors this way, regardless of `-R`. See [CLI.md](CLI.md) for the full flag reference.
+
+**Note:** The secondary flags can only be used together with `-R`. Using them without it produces an error rather than being silently ignored.
 
 ### Examples
 
 ```bash
-# Basic error reporting (detailed format, all errors)
-RoManTools validator "xyz" -m py -R
+# Detailed format, all problems listed (the default once -R is on)
+RoManTools convert "mhazhong dyng" -f py -t wg -R
 
-# Compact one-line format (requires -R)
-RoManTools validator "xyz" -m py -R --error_compact
+# Compact format: just a count per word
+RoManTools convert "mhazhong dyng" -f py -t wg -R --error_compact
 
-# First error only (requires -R)
-RoManTools validator "xyz" -m py -R --error_max 1
+# Detailed format, capped to the first problem per word
+RoManTools convert "mhazhong dyng" -f py -t wg -R --error_max 1
 
-# Compact format with error limit (requires -R)
-RoManTools validator "xyz" -m py -R --error_compact --error_max 1
-
-# Invalid: will produce error message
-RoManTools validator "xyz" -m py --error_compact
+# Invalid: --error_compact without -R
+RoManTools convert "mhazhong dyng" -f py -t wg --error_compact
 # Error: --error_compact and --error_max require --error_report (-R) to be enabled
 ```
 
-### Conversion with Error Reporting
-
-```bash
-# Detailed format (default)
-RoManTools convert "mhazhong dyng" -f py -t wg -R
-
-# Compact one-line format
-RoManTools convert "mhazhong dyng" -f py -t wg -R --error_compact
-
-# First error only per word
-RoManTools convert "mhazhong dyng" -f py -t wg -R --error_compact --error_max 1
+**Output with `-R` (detailed, default):**
+```
+WARNING: # Errors in word: 'mhazhong':
+=== Detailed Errors ===
+1. [invalid_initial] Invalid initial: 'mh' (initial='mh')
+2. [invalid_final] Invalid final: 'azhong' (final='azhong', initial='mh')
+3. [invalid_initial] Invalid initial: 'mh' (initial='mh')
+WARNING: # Errors in word: 'dyng':
+=== Detailed Errors ===
+1. [invalid_initial] Invalid initial: 'dyng' (initial='dyng')
+2. [invalid_final] Invalid final: '' (final='', initial='dyng')
+mha(!)-chung dyng(!)
 ```
 
-**Output with `-R --error_compact --error_max 1`:**
+**Output with `-R --error_compact`:**
 ```
-WARNING: # Errors in word: 'mhazhong': ERROR - invalid_initial - "mh"; (+2 more)
-WARNING: # Errors in word: 'dyng': ERROR - invalid_initial - "dyng"; (+1 more)
+WARNING: # Errors in word: 'mhazhong': 3 errors
+WARNING: # Errors in word: 'dyng': 2 errors
+mha(!)-chung dyng(!)
+```
+
+**Output with `-R --error_max 1`:**
+```
+WARNING: # Errors in word: 'mhazhong':
+=== Detailed Errors ===
+1. [invalid_initial] Invalid initial: 'mh' (initial='mh')
+... and 2 more error(s)
+WARNING: # Errors in word: 'dyng':
+=== Detailed Errors ===
+1. [invalid_initial] Invalid initial: 'dyng' (initial='dyng')
+... and 1 more error(s)
+mha(!)-chung dyng(!)
 ```
 
 ## pandas DataFrame Examples
@@ -267,8 +289,8 @@ print(invalid_df)
 ```
   syllable  is_valid                    error_types
 2      xyz     False  invalid_initial, invalid_final
-3      mha     False              invalid_initial
-4      pia     False                  rare_syllable
+3      mha     False                 invalid_initial
+4      pia     False                   rare_syllable
 ```
 
 ### Example 3: Categorize by Error Type
@@ -292,7 +314,7 @@ df['has_illegal_char'] = validation.apply(
     lambda x: 'illegal_character' in x['error_types']
 )
 df['has_invalid_structure'] = validation.apply(
-    lambda x: any(t in x['error_types'] 
+    lambda x: any(t in x['error_types']
                   for t in ['invalid_initial', 'invalid_final', 'invalid_syllable'])
 )
 
@@ -335,72 +357,41 @@ print(f"Average errors per invalid syllable: {df[~df['is_valid']]['error_count']
 
 ## Configuration Object
 
-When using the core API with Config:
+When using the core API with `Config` directly (see config.py):
 
 ```python
 from RoManTools.config import Config
 
-# Default: detailed reports, all errors
+# Default: detailed reports, all problems listed
 config = Config(error_report=True)
 
-# Compact format, first error only
+# Compact format (just a count)
 config = Config(
     error_report=True,
-    error_report_compact=True,
-    error_report_max=1
+    error_report_compact=True
 )
 
-# Compact format, all errors
+# Detailed format, capped to the first problem
 config = Config(
     error_report=True,
-    error_report_compact=True,
-    error_report_max=0
+    error_report_compact=False,
+    error_report_max=1
 )
 ```
 
 ## Recommendations for Different Use Cases
 
-### For Quick Table Validation
-Use `get_validation_column()` - simplest, returns "OK" or error.
+### For a Quick Table Check
+Use `get_validation_column()` - simplest, returns "OK" or a short description of the first problem.
 
 ### For Detailed Analysis
-Use `validate_text()` - returns dictionary with all information.
+Use `validate_text()` - returns a dictionary with everything you might need.
 
 ### For Large Datasets
-Use `validate_syllable()` with `max_errors=1` - faster, shows first error only.
+Use `validate_syllable()` (compact format, the default) - it only computes a count, which is the cheapest thing to compute and display.
 
 ### For Error Categorization
-Use `validate_text()` and check `error_types` list.
+Use `validate_text()` and check its `error_types` list.
 
 ### For Debugging
-Use detailed format in command line with `-R` flag.
-
-### For Production Systems
-Use compact format with `max_errors=1` for performance and readability.
-
-## Performance Tips
-
-1. **Set max_errors=1** for large datasets - stops validation after first error
-2. **Use compact format** - faster string generation
-3. **Disable error_report in Config** when using table_utils - they don't need logging
-4. **Cache method_params** if validating thousands of syllables:
-
-```python
-from RoManTools.data_loader import load_method_params
-from RoManTools.config import Config
-from RoManTools.syllable import SyllableProcessor
-
-# Load once
-config = Config(error_report=False)
-method_params = load_method_params('py')
-processor = SyllableProcessor(config, method_params)
-
-# Reuse for all syllables
-def validate_cached(text):
-    syl = processor.create_syllable(text)
-    if not syl.error_tracker.has_errors():
-        return "OK"
-    return syl.error_tracker.get_first_error_string()
-
-df['validation'] = df['syllable'].apply(validate_cached)
-```
+Use the detailed format on the command line with `-R` (no `--error_compact`).
