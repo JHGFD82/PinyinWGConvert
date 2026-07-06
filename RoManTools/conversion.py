@@ -39,6 +39,16 @@ def _convert_syllable(convert_from: str, convert_to: str, text_to_convert: str) 
     return text_to_convert + '(!)'
 
 
+def clear_conversion_cache() -> None:
+    """
+    Clear the process-wide per-syllable conversion cache.
+
+    Exposed mainly for tests that need a clean cache to make assertions
+    about cache hits/misses independent of what ran earlier in the process.
+    """
+    _convert_syllable.cache_clear()
+
+
 class RomanizationConverter:
     """
     Converts romanized Chinese between different romanization systems.

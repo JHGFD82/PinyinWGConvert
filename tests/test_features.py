@@ -497,8 +497,8 @@ class TestRoManToolsActions(unittest.TestCase):
         # re-parsing conversion_mapping.csv), so clear it here to make this
         # test's "first occurrence is a miss" assumption independent of
         # whatever other tests already converted "t'ao" wg->py.
-        from RoManTools.conversion import _convert_syllable
-        _convert_syllable.cache_clear()
+        from RoManTools.conversion import clear_conversion_cache
+        clear_conversion_cache()
 
         result = convert_text("t'ao t'ao", convert_from='wg', convert_to='py', crumbs=True)
         self.assertEqual(result, "tao tao")
