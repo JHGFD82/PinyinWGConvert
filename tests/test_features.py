@@ -492,6 +492,14 @@ class TestRoManToolsActions(unittest.TestCase):
 
     @timeit_decorator()
     def test_convert_text_crumb_cached(self):
+        # The per-syllable conversion cache is shared across the whole process
+        # (that's the point - it's what lets repeated calls in a loop avoid
+        # re-parsing conversion_mapping.csv), so clear it here to make this
+        # test's "first occurrence is a miss" assumption independent of
+        # whatever other tests already converted "t'ao" wg->py.
+        from RoManTools.conversion import _convert_syllable
+        _convert_syllable.cache_clear()
+
         result = convert_text("t'ao t'ao", convert_from='wg', convert_to='py', crumbs=True)
         self.assertEqual(result, "tao tao")
         self.log_handler.flush()

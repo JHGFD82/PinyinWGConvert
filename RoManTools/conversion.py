@@ -12,16 +12,41 @@ from .data_loader import load_conversion_data
 from .config import Config
 
 
+@lru_cache(maxsize=100000)
+def _convert_syllable(convert_from: str, convert_to: str, text_to_convert: str) -> str:
+    """
+    Converts a single syllable between romanization methods.
+
+    Module-level (not per-instance) so the cache is shared across every
+    RomanizationConverter ever created with the same convert_from/convert_to
+    pair — repeated syllables across separate convert_text()/cherry_pick()
+    calls in a loop are only looked up once.
+
+    Args:
+        convert_from (str): The romanization system to convert from.
+        convert_to (str): The romanization system to convert to.
+        text_to_convert (str): The text to be converted.
+
+    Returns:
+        str: The converted text based on the selected romanization conversion mappings.
+    """
+    lowercased_text = text_to_convert.lower()
+    for row in load_conversion_data():
+        if row[convert_from].lower() == lowercased_text:
+            if not row[convert_to] and row['meta'] == 'rare':
+                return text_to_convert + '(!rare Pinyin!)'
+            return row[convert_to]
+    return text_to_convert + '(!)'
+
+
 class RomanizationConverter:
     """
     Converts romanized Chinese between different romanization systems.
 
     Attributes:
-        conversion_mapping (list): The loaded conversion data mapping between systems.
         convert_from (str): The romanization system to convert from (e.g., 'py').
         convert_to (str): The romanization system to convert to (e.g., 'wg').
         config (Config): The configuration object for the conversion.
-        _cached_convert (Callable): The cached conversion function.
     """
 
     def __init__(self, convert_from: str, convert_to: str, config: Config):
@@ -33,42 +58,9 @@ class RomanizationConverter:
             convert_to (str): The romanization system to convert to.
             config (Config): The configuration object for the conversion.
         """
-        self.conversion_mapping = load_conversion_data()
         self.convert_from = convert_from
         self.convert_to = convert_to
         self.config = config
-        self._cached_convert = self._make_cached_convert()
-
-    def _make_cached_convert(self):
-        """
-        Creates a cached conversion function bound to the current instance's mapping and settings.
-
-        Returns:
-            Callable[[str], str]: A function that converts text using an LRU cache.
-        """
-        conversion_mapping = self.conversion_mapping
-        convert_from = self.convert_from
-        convert_to = self.convert_to
-
-        @lru_cache(maxsize=10000)
-        def _cached_convert(text_to_convert: str) -> str:
-            """
-            Converts a given text using an LRU cache.
-
-            Args:
-                text_to_convert (str): The text to be converted.
-
-            Returns:
-                str: The converted text based on the selected romanization conversion mappings.
-            """
-            lowercased_text = text_to_convert.lower()
-            for row in conversion_mapping:
-                if row[convert_from].lower() == lowercased_text:
-                    if not row[convert_to] and row['meta'] == 'rare':
-                        return text_to_convert + '(!rare Pinyin!)'
-                    return row[convert_to]
-            return text_to_convert + '(!)'
-        return _cached_convert
 
     def convert(self, text: str) -> str:
         """
@@ -81,10 +73,9 @@ class RomanizationConverter:
         Returns:
             str: The converted text based on the selected romanization conversion mappings.
         """
-        cache = self._cached_convert.cache_info()
-        before_hits = cache.hits
-        result = self._cached_convert(text)
-        after_hits = self._cached_convert.cache_info().hits
+        before_hits = _convert_syllable.cache_info().hits
+        result = _convert_syllable(self.convert_from, self.convert_to, text)
+        after_hits = _convert_syllable.cache_info().hits
 
         if after_hits > before_hits and self.config.crumbs:
             self.config.print_crumb(2, "Cached", f'"{text}" -> "{result}"')

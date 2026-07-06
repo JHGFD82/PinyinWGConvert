@@ -13,7 +13,7 @@ Classes:
 
 import logging
 import argparse
-from typing import Union, Dict, Any
+from typing import Union, Dict, Any, Optional, Tuple
 
 
 class Config:
@@ -49,6 +49,23 @@ class Config:
         self.logger = logging.getLogger(__name__)
         if not logging.getLogger().hasHandlers():  # pragma: no cover
             logging.basicConfig(level=logging.INFO, format='%(levelname)5s: %(message)s')  # pragma: no cover
+
+    def _key(self) -> Tuple[bool, bool, bool, bool, Optional[int]]:
+        return (self.crumbs, self.error_skip, self.error_report, self.error_report_compact, self.error_report_max)
+
+    def __eq__(self, other: object) -> bool:
+        """Two Configs with the same settings are equal, regardless of identity.
+
+        This makes Config usable as an lru_cache key across separate calls that
+        build equivalent-but-distinct Config instances (the common case, since
+        callers typically don't reuse one Config object across calls).
+        """
+        if not isinstance(other, Config):
+            return NotImplemented
+        return self._key() == other._key()
+
+    def __hash__(self) -> int:
+        return hash(self._key())
 
     @staticmethod
     def from_args(args: Union[argparse.Namespace, Dict[str, Any]]) -> "Config":

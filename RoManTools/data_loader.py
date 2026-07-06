@@ -21,6 +21,7 @@ Functions:
         Load a list of stopwords from a text file.
 """
 
+from functools import lru_cache
 from typing import Tuple, List, Dict, Union
 import os
 import csv
@@ -29,6 +30,7 @@ import csv
 base_path = os.path.dirname(__file__)
 
 
+@lru_cache(maxsize=None)
 def load_romanization_data(file_path: str) -> Tuple[List[str], List[str], Tuple[Tuple[bool, ...], ...]]:
     """
     Loads romanization data from a CSV file and returns the initials, finals, and a nested tuple indicating valid
@@ -53,9 +55,13 @@ def load_romanization_data(file_path: str) -> Tuple[List[str], List[str], Tuple[
     return init_list, fin_list, ar
 
 
+@lru_cache(maxsize=None)
 def load_conversion_data() -> List[Dict[str, str]]:
     """
     Loads the conversion mappings based on the method combination specified during initialization.
+
+    Cached for the life of the process (the CSV never changes at runtime). The
+    returned list/dicts are shared across callers — treat as read-only.
 
     Returns:
         List[Dict[str, str]]: A list of dictionaries containing conversion mappings between different romanization methods.
@@ -70,10 +76,14 @@ def load_conversion_data() -> List[Dict[str, str]]:
     return mappings
 
 
+@lru_cache(maxsize=None)
 def load_rare_syllables() -> Dict[str, set[str]]:
     """
     Loads rare syllable information from the conversion mapping CSV.
-    
+
+    Cached for the life of the process; the returned dict is shared across
+    callers — treat as read-only.
+
     Returns:
         Dict[str, set[str]]: A dictionary mapping romanization method codes to sets of rare syllables.
                              For example: {'py': {'ong', 'pia', 'pun'}, 'wg': set()}
@@ -95,9 +105,13 @@ def load_rare_syllables() -> Dict[str, set[str]]:
     return rare_syllables
 
 
+@lru_cache(maxsize=None)
 def load_method_params(method: str) -> Dict[str, Union[Tuple[Tuple[bool, ...], ...], List[str], str]]:
     """
     Loads romanization method parameters including initials, finals, and the valid combinations array.
+
+    Cached per method for the life of the process; the returned dict is shared
+    across callers — treat as read-only.
 
     Args:
         method (str): The romanization method (e.g., 'py', 'wg').
@@ -119,9 +133,13 @@ def load_method_params(method: str) -> Dict[str, Union[Tuple[Tuple[bool, ...], .
     }
 
 
+@lru_cache(maxsize=None)
 def load_stopwords() -> List[str]:
     """
     Loads a list of stopwords from a text file.
+
+    Cached for the life of the process; the returned list is shared across
+    callers — treat as read-only.
 
     Returns:
         List[str]: A list of stopwords.
