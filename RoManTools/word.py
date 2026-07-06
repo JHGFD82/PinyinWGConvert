@@ -1,16 +1,22 @@
 """
-Word processing utilities for romanized Mandarin text.
+Assembling syllables back into a converted word.
 
-This module provides the `WordProcessor` and `Word` classes, which are used to process words and their syllables
-based on the specified romanization method (e.g., Pinyin, Wade-Giles). It includes functionality for:
-- Creating words from syllables (as a list of Syllable objects).
-- Validating and converting syllables.
-- Handling contractions and stopwords.
-- Collecting and reporting validation errors.
+Once a word has been split into its Syllable objects (see chunker.py and
+syllable.py) and each syllable's converted spelling looked up (see
+conversion.py), there's still real work left before you get a finished,
+readable word back: syllables need their capitalization restored, the
+right apostrophes/dashes need to be added back in (Pinyin and Wade-Giles
+each have their own rules for this), and a few special cases need
+handling - contractions like "we've" that happen to look like valid
+syllables, and words like "China" that shouldn't be "corrected" even
+though they're not standard Pinyin/Wade-Giles spelling. This module is
+where all of that comes together.
 
 Classes:
-    WordProcessor: Processes words and their syllables based on the specified romanization method.
-    Word: Represents a word and its syllables, providing methods for validation and conversion.
+    WordProcessor: Shared setup for converting words between two
+        particular romanization methods (created once per convert_text()/
+        cherry_pick() call, then used to build every Word in that call).
+    Word: One word, from its syllables through to its final converted form.
 """
 
 import logging
@@ -24,25 +30,27 @@ from .errors import ErrorTracker
 
 class WordProcessor:
     """
-    Processes words and their syllables based on the specified romanization method.
+    Holds everything needed to convert words from one romanization method
+    to another, so that setup only happens once per convert_text()/
+    cherry_pick() call rather than once per word.
 
     Attributes:
-        config (Config): Configuration object that manages processing options like crumbs, error skipping, and error reporting.
-        convert_from (str): The romanization method to convert from (e.g., 'py' for Pinyin).
-        convert_to (str): The romanization method to convert to (e.g., 'wg' for Wade-Giles).
-        stopwords (Set[str]): A set of stopwords to be excluded from processing.
-        converter (RomanizationConverter): The converter object used for romanization conversion.
+        config (Config): The settings for this run (see config.py).
+        convert_from (str): The romanization method to convert from (e.g. 'py').
+        convert_to (str): The romanization method to convert to (e.g. 'wg').
+        stopwords (Set[str]): Words that should be left unconverted even if
+            they look like valid syllables (e.g. "China").
+        converter (RomanizationConverter): Looks up each syllable's
+            converted spelling (see conversion.py).
     """
 
     def __init__(self, config: Config, convert_from: str, convert_to: str, stopwords: Set[str]):
         """
-        Initialize a WordProcessor with the provided configuration and romanization method parameters.
-
         Args:
-            config (Config): Configuration object that manages processing options like crumbs, error skipping, and error reporting.
-            convert_from (str): The romanization method to convert from (e.g., 'py' for Pinyin).
-            convert_to (str): The romanization method to convert to (e.g., 'wg' for Wade-Giles).
-            stopwords (Set[str]): A set of stopwords to be excluded from processing.
+            config (Config): The settings for this run.
+            convert_from (str): The romanization method to convert from.
+            convert_to (str): The romanization method to convert to.
+            stopwords (Set[str]): Words to leave unconverted.
         """
 
         self.config = config
@@ -53,13 +61,14 @@ class WordProcessor:
 
     def create_word(self, syllables: List[Syllable]) -> "Word":
         """
-        Create a Word object from a list of Syllable objects.
+        Build a Word from a list of already-parsed syllables.
 
         Args:
-            syllables (List[Syllable]): A list of Syllable objects to be processed.
+            syllables (List[Syllable]): The syllables making up this word,
+                in order.
 
         Returns:
-            Word: A Word object created from the given syllables.
+            Word: The resulting Word object.
         """
 
         return Word(syllables, self)
@@ -67,25 +76,29 @@ class WordProcessor:
 
 class Word:
     """
-    Represents a word and its syllables, providing methods for validation and conversion.
+    One word, from its syllables through to its final converted form.
 
     Attributes:
-        syllables (List[Syllable]): A list of Syllable objects that make up the word.
-        processor (WordProcessor): The processor object used to handle syllable validation and conversion.
-        processed_syllables (List[Tuple[str, Syllable]]): A list of tuples containing the converted syllable and the original Syllable object.
-        preview_word (str): A preview of the word used to determine if it is a stopword.
-        final_word (str): The final processed word.
-        valid (bool): Indicates if all syllables in the word are valid.
-        contraction (bool): Indicates if the word is a contraction.
+        syllables (List[Syllable]): The syllables making up this word.
+        processor (WordProcessor): Provides the conversion settings and
+            method shared across every word in this run.
+        processed_syllables (List[Tuple[str, Syllable]]): Each syllable
+            paired with its converted spelling, filled in by convert() below.
+        preview_word (str): A lowercase, unconverted rendering of the word,
+            used only to check it against the stopword list.
+        final_word (str): The finished, converted word - filled in by
+            add_symbols() below.
+        valid (bool): Whether every syllable in the word is valid.
+        contraction (bool): Whether this word is an English contraction
+            (like "we've") that happens to look like valid romanized
+            syllables, rather than actual Mandarin.
     """
 
     def __init__(self, syllables: List[Syllable], processor: WordProcessor):
         """
-        Initialize a Word object with the provided syllables and processor.
-
         Args:
-            syllables (List[Syllable]): A list of Syllable objects that make up the word.
-            processor (WordProcessor): The processor object used to handle syllable validation and conversion.
+            syllables (List[Syllable]): The syllables making up this word.
+            processor (WordProcessor): The shared conversion settings.
         """
 
         self.syllables = syllables
@@ -96,17 +109,20 @@ class Word:
         self.valid = self.all_valid()
         self.contraction = self.is_contraction()
         self._stopword_logged = False
-        
+
         # Collect errors from all syllables
         self.error_tracker = ErrorTracker()
         for syl in self.syllables:
-            self.error_tracker.merge(syl.error_tracker) 
+            self.error_tracker.merge(syl.error_tracker)
 
     def _create_preview_word(self) -> str:
         """
-        Creates a preview word by joining the full syllables of the word with apostrophes and dashes where necessary.
-        The preview word is used to determine whether the word is a stopword, which includes contractions such as
-        "we've" and "we're," which are potentially valid romanized syllables, even though they are not Mandarin terms.
+        Reassemble the word's syllables into one lowercase string, keeping
+        any apostrophes/dashes the original text had. This "preview" isn't
+        shown to the user - it exists purely so the word can be checked
+        against the stopword list, which is what lets something like
+        "we've" (a valid-looking but non-Mandarin sequence of syllables) be
+        recognized as English rather than romanized Mandarin.
 
         Returns:
             str: The preview word.
@@ -124,22 +140,23 @@ class Word:
 
     def all_valid(self) -> bool:
         """
-        Checks if all syllables in the word are valid.
-
         Returns:
-            bool: True if all syllables are valid, False otherwise.
+            bool: True if every syllable in this word is valid.
         """
 
         return all(syl.valid for syl in self.syllables)
 
     def is_contraction(self) -> bool:
         """
-        Checks if the word is a contraction by verifying that all but the last syllable are valid,
-        the last syllable has an apostrophe, and the last syllable matches a supported contraction.
-        Only returns True if error_skip is enabled.
+        Check whether this word is actually an English contraction (like
+        "we've", "it'd", "we'll") that happens to parse as valid-looking
+        syllables followed by an apostrophe and a recognized ending. Only
+        relevant when `error_skip` is on (see config.py) - the setting
+        needed for processing text that mixes English and Mandarin in the
+        first place.
 
         Returns:
-            bool: True if the word is a contraction, False otherwise.
+            bool: True if this word looks like a contraction.
         """
 
         valid_syllables = all(syl.valid for syl in self.syllables[:-1])
@@ -154,10 +171,12 @@ class Word:
 
     def is_convertable(self) -> bool:
         """
-        Checks if the word is valid or a contraction and not a stopword.
+        Check whether this word should actually be converted: it must not
+        be a stopword (see WordProcessor.stopwords above), and it must be
+        either fully valid or a recognized contraction.
 
         Returns:
-            bool: True if the word is valid or a contraction and not a stopword, False otherwise.
+            bool: True if this word should be converted.
         """
 
         if self.preview_word in self.processor.stopwords:
@@ -171,8 +190,16 @@ class Word:
 
     def convert(self):
         """
-        Converts the syllables of the word. If error_skip is False, all syllables are processed and errors are reported.
-        If error_skip is True, only valid syllables or contractions are converted, and stopwords are not processed.
+        Fill in `processed_syllables` with each syllable's converted
+        spelling.
+
+        The two code paths below exist because `convert_text()` and
+        `cherry_pick()` (see actions.py) need different behavior:
+        `convert_text()` always converts every syllable and reports
+        problems (error_skip is off); `cherry_pick()` needs to skip words
+        that aren't valid Mandarin - including stopwords and contractions -
+        and pass them through unchanged instead of "converting" them into
+        nonsense (error_skip is on).
         """
 
         # For standard conversion requests, process syllables with error messages.
@@ -194,7 +221,10 @@ class Word:
 
     def apply_caps(self):
         """
-        Applies capitalization to the converted syllables based on their capitalization attributes.
+        Restore each converted syllable's original capitalization (ALL
+        CAPS, Title Case, or unchanged) using the capitalization each
+        Syllable already recorded about itself (see
+        Syllable.apply_caps in syllable.py).
         """
 
         # The apply_caps method within the Syllable object is called on each syllable to apply capitalization based on
@@ -203,8 +233,9 @@ class Word:
 
     def add_symbols(self):
         """
-        Adds apostrophes and dashes to the converted syllables based on the conversion system and the presence of vowels.
-        The result is stored in self.final_word.
+        Join the converted syllables into `self.final_word`, inserting
+        whichever apostrophes/dashes the target romanization method needs
+        between them (see _append_syllable below for the specific rules).
         """
 
         # Syllables have to be processed individually if conversion took place. Otherwise, they are combined in a
@@ -218,11 +249,18 @@ class Word:
 
     def _append_syllable(self, i: int):
         """
-        Appends a syllable to the final word with an apostrophe or a dash based on the conversion system and the
-        presence of vowels.
+        Append one converted syllable to `self.final_word`, deciding
+        whether it needs an apostrophe or dash before it:
+
+        - A contraction's final syllable always gets an apostrophe (unless
+          the target method is Wade-Giles, which already keeps apostrophes
+          as part of its initials).
+        - Converting to Pinyin: an apostrophe is added only where it's
+          needed to keep the word unambiguous (see _needs_apostrophe below).
+        - Converting to Wade-Giles: syllables are always separated by a dash.
 
         Args:
-            i (int): The index of the syllable to be appended.
+            i (int): Which syllable, by position, to append.
         """
 
         # Specific rules for romanization are contained here.
@@ -235,7 +273,6 @@ class Word:
             self.final_word += "'" + curr_syllable
         # For Pinyin, specific logic is applied to determine whether an apostrophe is needed between syllables.
         elif self.processor.convert_to == 'py':
-            # self.final_word += "'" + curr_syllable
             if self.processed_syllables[i][1].valid and self._needs_apostrophe(prev_syllable, curr_syllable):
                 self.final_word += "'" + curr_syllable
             else:
@@ -247,15 +284,18 @@ class Word:
     @staticmethod
     def _needs_apostrophe(prev_syllable: str, curr_syllable: str) -> bool:
         """
-        Determines whether an apostrophe is needed between two syllables based on the last character of the previous
-        syllable and the first character of the current syllable.
+        Decide whether joining two Pinyin syllables without a separator
+        would be ambiguous - specifically, whether it could be misread as
+        a different syllable break. An apostrophe is needed whenever the
+        next syllable starts with a vowel and the previous one ends in a
+        way that could blend into it (another vowel, or "er"/"n"/"ng").
 
         Args:
-            prev_syllable (str): The previous syllable.
-            curr_syllable (str): The current syllable.
+            prev_syllable (str): The syllable just before this one.
+            curr_syllable (str): The syllable being appended.
 
         Returns:
-            bool: True if an apostrophe is needed, False otherwise.
+            bool: True if an apostrophe is needed between them.
         """
 
         # The logic for apostrophes in Pinyin is based on the following rules in which the start of the next syllable
@@ -272,7 +312,12 @@ class Word:
 
     def _append_all_syllables(self):
         """
-        Appends all syllables to the final word, adding any symbols if they were in the original text.
+        Used instead of _append_syllable/_needs_apostrophe when the word
+        wasn't actually converted (e.g. an English word passing through
+        cherry_pick unchanged) - just puts the syllables back together with
+        whatever apostrophes/dashes they originally had, rather than
+        applying romanization-specific separator rules that wouldn't make
+        sense for non-Mandarin text.
         """
 
         for syl in self.processed_syllables:
@@ -285,17 +330,18 @@ class Word:
 
     def process_syllables(self) -> str:
         """
-        Processes the syllables of the word by converting them, applying capitalization, and adding symbols.
-        Returns the final processed word as a string.
+        Run this word through the full pipeline - convert, restore
+        capitalization, add separators - and, if `error_report` is on and
+        anything went wrong, log a warning describing the problem.
 
         Returns:
-            str: The final word after processing the syllables.
+            str: The finished word.
         """
 
         self.convert()
         self.apply_caps()
         self.add_symbols()
-        
+
         # Report errors if error_report is enabled
         if self.processor.config.error_report and self.error_tracker.has_errors():
             error_report = self.error_tracker.generate_report(
@@ -304,15 +350,15 @@ class Word:
                 include_summary=False,
                 include_details=True
             )
-            
+
             # For detailed reports, include word context
             if not self.processor.config.error_report_compact:
                 message = f"'{self.preview_word}':\n{error_report}"
             else:
                 # For compact reports, just show the error
                 message = f"'{self.preview_word}': {error_report}"
-            
+
             # Print error report directly (independent of crumbs setting)
             self.processor.config.logger.warning(f"# Errors in word: {message}")
-        
+
         return self.final_word
